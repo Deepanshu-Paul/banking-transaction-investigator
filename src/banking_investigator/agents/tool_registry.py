@@ -1,6 +1,6 @@
-from src.banking_investigator.tools.banking_tools import (
-    get_account,
+from banking_investigator.tools.banking_tools import (
     get_transaction,
+    get_account,
 )
 
 
