@@ -1,4 +1,5 @@
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
+from langgraph.types import interrupt
 
 from banking_investigator.agents.state import AgentState
 from banking_investigator.agents.tool_executor import execute_tool
@@ -39,7 +40,10 @@ def tool_node(state: AgentState) -> dict:
         tool_name = tool_call["name"]
         arguments = tool_call["args"]
 
-        tool_result = execute_tool(tool_name, arguments)
+        tool_result = execute_tool(
+            tool_name,
+            arguments,
+        )
 
         tool_messages.append(
             ToolMessage(
@@ -52,4 +56,55 @@ def tool_node(state: AgentState) -> dict:
 
     return {
         "messages": tool_messages,
+    }
+
+
+def human_approval_node(state: AgentState) -> dict:
+    decision = interrupt(
+        {
+            "type": "human_approval",
+            "message": (
+                "Please review the investigation "
+                "and approve or reject it."
+            ),
+            "options": [
+                "approve",
+                "reject",
+            ],
+        }
+    )
+
+    if decision not in {"approve", "reject"}:
+        raise ValueError(
+            "Human decision must be 'approve' or 'reject'."
+        )
+
+    return {
+        "approval_decision": decision,
+    }
+
+
+def approved_node(state: AgentState) -> dict:
+    return {
+        "messages": [
+            HumanMessage(
+                content=(
+                    "Human approval received. "
+                    "Investigation approved."
+                )
+            )
+        ]
+    }
+
+
+def rejected_node(state: AgentState) -> dict:
+    return {
+        "messages": [
+            HumanMessage(
+                content=(
+                    "Human rejection received. "
+                    "Investigation rejected."
+                )
+            )
+        ]
     }

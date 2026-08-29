@@ -37,5 +37,13 @@ class Settings(BaseSettings):
             f"Unsupported LLM_PROVIDER: {self.llm_provider}"
         )
 
+    @property
+    def postgres_conn_string(self) -> str:
+        return self.database_url.replace(
+            "postgresql+psycopg://",
+            "postgresql://",
+            1,
+        )
+
 
 settings = Settings()

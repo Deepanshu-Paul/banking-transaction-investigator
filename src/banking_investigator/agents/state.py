@@ -6,3 +6,4 @@ from typing_extensions import TypedDict
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
+    approval_decision: str | None
