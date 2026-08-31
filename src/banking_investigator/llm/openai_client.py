@@ -1,11 +1,14 @@
 import json
-from typing import Any
+from typing import Any, TypeVar
 
 from langchain_core.messages import AIMessage
 from openai import OpenAI
 
 from banking_investigator.config.settings import settings
 from banking_investigator.llm.base import LLMClient
+
+
+T = TypeVar("T")
 
 
 class OpenAILLMClient(LLMClient):
@@ -33,8 +36,6 @@ class OpenAILLMClient(LLMClient):
             ]
 
         if message.type == "ai":
-            # Responses API function-call items must be preserved
-            # for the following function_call_output.
             openai_output = message.additional_kwargs.get(
                 "openai_response_output"
             )
@@ -161,3 +162,42 @@ class OpenAILLMClient(LLMClient):
                 "openai_response_output": openai_output
             },
         )
+
+    def invoke_structured(
+        self,
+        messages: list[Any],
+        output_schema: type[T],
+    ) -> T:
+
+        openai_input = []
+
+        for message in messages:
+            openai_input.extend(
+                self._to_openai_input(message)
+            )
+
+        schema = output_schema.model_json_schema()
+
+        response = self.client.responses.create(
+            model=settings.llm_model,
+            input=openai_input,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": output_schema.__name__,
+                    "schema": schema,
+                    "strict": True,
+                }
+            },
+        )
+
+        content = response.output_text
+
+        if not content:
+            raise ValueError(
+                "OpenAI returned an empty structured response."
+            )
+
+        data = json.loads(content)
+
+        return output_schema.model_validate(data)

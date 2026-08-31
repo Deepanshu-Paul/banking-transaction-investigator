@@ -1,11 +1,14 @@
 import json
-from typing import Any
+from typing import Any, TypeVar
 
 from groq import Groq
 from langchain_core.messages import AIMessage
 
 from banking_investigator.config.settings import settings
 from banking_investigator.llm.base import LLMClient
+
+
+T = TypeVar("T")
 
 
 class GroqLLMClient(LLMClient):
@@ -95,3 +98,40 @@ class GroqLLMClient(LLMClient):
                 for tool_call in (groq_message.tool_calls or [])
             ],
         )
+
+    def invoke_structured(
+        self,
+        messages: list[Any],
+        output_schema: type[T],
+    ) -> T:
+
+        groq_messages = [
+            self._to_groq_message(message)
+            for message in messages
+        ]
+
+        schema = output_schema.model_json_schema()
+
+        response = self.client.chat.completions.create(
+            model=settings.llm_model,
+            messages=groq_messages,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": output_schema.__name__,
+                    "schema": schema,
+                    "strict": True,
+                },
+            },
+        )
+
+        content = response.choices[0].message.content
+
+        if not content:
+            raise ValueError(
+                "Groq returned an empty structured response."
+            )
+
+        data = json.loads(content)
+
+        return output_schema.model_validate(data)
