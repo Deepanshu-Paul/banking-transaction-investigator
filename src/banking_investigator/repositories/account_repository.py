@@ -1,15 +1,19 @@
 from typing import Any
 
-import psycopg
-
-from banking_investigator.config.settings import settings
+from banking_investigator.repositories.database import Database
+from banking_investigator.utils.deadline import Deadline
 
 
 class AccountRepository:
     def __init__(self):
-        self.database_url = settings.database_url.replace("+psycopg", "")
+        self.db = Database()
 
-    def find_by_id(self, account_id: str) -> dict[str, Any] | None:
+    def find_by_id(
+        self,
+        account_id: str,
+        deadline: Deadline | None = None,
+    ) -> dict[str, Any] | None:
+
         query = """
             SELECT
                 account_id,
@@ -21,10 +25,11 @@ class AccountRepository:
             WHERE account_id = %s
         """
 
-        with psycopg.connect(self.database_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, (account_id,))
-                row = cur.fetchone()
+        row = self.db.fetch_one(
+            query,
+            (account_id,),
+            deadline=deadline,
+        )
 
         if row is None:
             return None

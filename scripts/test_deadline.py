@@ -11,19 +11,23 @@ from banking_investigator.agents import tool_executor
 attempts = 0
 
 
-def slow_retryable_tool() -> dict:
+def slow_retryable_tool(deadline=None) -> dict:
     global attempts
     attempts += 1
 
-    print(f"Executing slow tool... attempt {attempts}")
+    print(
+        f"Executing slow tool... "
+        f"attempt {attempts}"
+    )
 
-    # Simulate an operation that itself takes 2 seconds.
     time.sleep(2)
 
     raise RetryableError("Simulated timeout")
 
 
-tool_executor.TOOL_REGISTRY["deadline_test"] = slow_retryable_tool
+tool_executor.TOOL_REGISTRY["deadline_test"] = (
+    slow_retryable_tool
+)
 
 start = time.monotonic()
 

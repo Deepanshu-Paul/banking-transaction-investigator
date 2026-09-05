@@ -32,7 +32,7 @@ def execute_tool(
 
     for attempt in range(MAX_RETRIES + 1):
 
-        # Check overall deadline before starting another attempt.
+        # Stop if the overall deadline has expired.
         if deadline.expired():
             return ToolResult(
                 success=False,
@@ -43,7 +43,11 @@ def execute_tool(
             )
 
         try:
-            result = tool(**arguments)
+            # Pass the SAME deadline into the tool.
+            result = tool(
+                **arguments,
+                deadline=deadline,
+            )
 
             return ToolResult(
                 success=True,
@@ -60,18 +64,18 @@ def execute_tool(
             # Exponential backoff.
             base_backoff = INITIAL_BACKOFF_SECONDS * (2 ** attempt)
 
-            # Add random jitter to avoid synchronized retries.
+            # Random jitter to avoid synchronized retries.
             jitter = random.uniform(0, 0.5)
 
             backoff = base_backoff + jitter
 
-            # Check how much of the overall deadline remains.
+            # Calculate remaining overall budget.
             remaining = deadline.remaining_seconds()
 
             if remaining <= 0:
                 break
 
-            # Never sleep longer than the remaining deadline.
+            # Never sleep longer than the remaining budget.
             sleep_time = min(backoff, remaining)
 
             print(

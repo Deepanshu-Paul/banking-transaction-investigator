@@ -1,40 +1,17 @@
 from typing import Any
 
-import psycopg
-from psycopg.errors import QueryCanceled
-from banking_investigator.services.errors import RetryableError
-from banking_investigator.config.settings import settings
+from banking_investigator.repositories.database import Database
+from banking_investigator.utils.deadline import Deadline
 
 
 class TransactionRepository:
     def __init__(self):
-        self.database_url = settings.database_url.replace("+psycopg", "")
-
-    def _fetch_one(
-        self,
-        query: str,
-        params: tuple[Any, ...] = (),
-    ) -> tuple[Any, ...] | None:
-        try:
-            with psycopg.connect(self.database_url) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        f"SET statement_timeout = "
-                        f"{settings.db_statement_timeout_ms}"
-                    )
-
-                    cur.execute(query, params)
-                    return cur.fetchone()
-
-        except QueryCanceled as exc:
-            raise RetryableError(
-                f"Database query timed out after "
-                f"{settings.db_statement_timeout_ms} ms"
-            ) from exc
+        self.db = Database()
 
     def find_by_id(
         self,
         transaction_id: str,
+        deadline: Deadline | None = None,
     ) -> dict[str, Any] | None:
 
         query = """
@@ -51,7 +28,11 @@ class TransactionRepository:
             WHERE transaction_id = %s
         """
 
-        row = self._fetch_one(query, (transaction_id,))
+        row = self.db.fetch_one(
+            query,
+            (transaction_id,),
+            deadline=deadline,
+        )
 
         if row is None:
             return None
