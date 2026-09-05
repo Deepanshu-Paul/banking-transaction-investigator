@@ -76,13 +76,18 @@ class GroqLLMClient(LLMClient):
             for message in messages
         ]
 
-        response = self.client.chat.completions.create(
-            model=settings.llm_model,
-            messages=groq_messages,
-            tools=tools,
-            tool_choice="auto",
-        )
+        request_kwargs = {
+            "model": settings.llm_model,
+            "messages": groq_messages,
+        }
 
+        if tools:
+            request_kwargs["tools"] = tools
+            request_kwargs["tool_choice"] = "auto"
+
+        response = self.client.chat.completions.create(
+            **request_kwargs
+        )
         groq_message = response.choices[0].message
 
         return AIMessage(
@@ -134,4 +139,4 @@ class GroqLLMClient(LLMClient):
 
         data = json.loads(content)
 
-        return output_schema.model_validate(data)
+        return output_schema.model_validate(data)   

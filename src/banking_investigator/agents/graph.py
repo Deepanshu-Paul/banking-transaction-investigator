@@ -5,8 +5,11 @@ from langgraph.checkpoint.postgres import PostgresSaver
 
 from banking_investigator.agents.nodes import (
     account_agent_node,
+    account_tool_node,
+    final_response_node,
     supervisor_node,
     transaction_agent_node,
+    transaction_tool_node,
 )
 from banking_investigator.agents.state import AgentState
 from banking_investigator.config.settings import settings
@@ -27,6 +30,24 @@ def route_after_supervisor(state: AgentState) -> str:
     raise ValueError(
         f"Unexpected supervisor decision: {next_agent}"
     )
+
+
+def should_continue_transaction(state: AgentState) -> str:
+    last_message = state["messages"][-1]
+
+    if last_message.tool_calls:
+        return "tools"
+
+    return "supervisor"
+
+
+def should_continue_account(state: AgentState) -> str:
+    last_message = state["messages"][-1]
+
+    if last_message.tool_calls:
+        return "tools"
+
+    return "supervisor"
 
 
 builder = StateGraph(AgentState)
@@ -51,6 +72,17 @@ builder.add_node(
     account_agent_node,
 )
 
+builder.add_node(
+    "transaction_tools",
+    transaction_tool_node,
+)
+
+builder.add_node(
+    "account_tools",
+    account_tool_node,
+)
+
+builder.add_node("final_response", final_response_node)
 
 # -------------------------
 # START → SUPERVISOR
@@ -72,23 +104,47 @@ builder.add_conditional_edges(
     {
         "transaction": "transaction_agent",
         "account": "account_agent",
-        "finish": END,
+        "finish": "final_response",
+    },
+)
+
+builder.add_edge("final_response", END)
+
+# -------------------------
+# WORKER → TOOL / SUPERVISOR
+# -------------------------
+
+builder.add_conditional_edges(
+    "transaction_agent",
+    should_continue_transaction,
+    {
+        "tools": "transaction_tools",
+        "supervisor": "supervisor",
+    },
+)
+
+builder.add_conditional_edges(
+    "account_agent",
+    should_continue_account,
+    {
+        "tools": "account_tools",
+        "supervisor": "supervisor",
     },
 )
 
 
 # -------------------------
-# Workers → END (temporary)
+# TOOL → WORKER
 # -------------------------
 
 builder.add_edge(
+    "transaction_tools",
     "transaction_agent",
-    END,
 )
 
 builder.add_edge(
+    "account_tools",
     "account_agent",
-    END,
 )
 
 

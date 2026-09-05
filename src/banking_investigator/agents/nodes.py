@@ -68,6 +68,58 @@ def tool_node(state: AgentState) -> dict:
         "messages": tool_messages,
     }
 
+def _execute_scoped_tools(
+    state: AgentState,
+    allowed_tools: set[str],
+) -> dict:
+    last_message = state["messages"][-1]
+    tool_messages = []
+    investigation_data = []
+
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call["name"]
+
+        if tool_name not in allowed_tools:
+            raise ValueError(
+                f"Tool '{tool_name}' is not allowed for this worker."
+            )
+
+        tool_result = execute_tool(
+            tool_name,
+            tool_call["args"],
+        )
+
+        result_data = tool_result.model_dump()
+
+        investigation_data.append({
+            "tool": tool_name,
+            "result": result_data,
+        })
+
+        tool_messages.append(
+            ToolMessage(
+                content=serialize_for_llm(result_data),
+                tool_call_id=tool_call["id"],
+            )
+        )
+
+    return {
+        "messages": tool_messages,
+        "investigation_data": investigation_data,
+    }
+
+def transaction_tool_node(state: AgentState) -> dict:
+    return _execute_scoped_tools(
+        state,
+        {"get_transaction"},
+    )
+
+
+def account_tool_node(state: AgentState) -> dict:
+    return _execute_scoped_tools(
+        state,
+        {"get_account"},
+    )
 
 def human_approval_node(state: AgentState) -> dict:
     decision = interrupt(
@@ -157,18 +209,43 @@ def account_agent_node(state: AgentState) -> dict:
         "messages": [response],
     }
 
+def final_response_node(state: AgentState) -> dict:
+    messages = [
+        HumanMessage(
+            content=(
+                "Generate the final answer to the user's request.\n\n"
+                f"User request:\n{state['messages'][0].content}\n\n"
+                "Use ONLY the investigation data provided below.\n"
+                "Do not invent facts, risk scores, history, "
+                "geolocation, device information, or other details "
+                "that are not present in the investigation data.\n"
+                "If the available data is insufficient to answer "
+                "something, say so.\n\n"
+                f"Investigation data:\n{state['investigation_data']}"
+            )
+        )
+    ]
+    response = llm_client.invoke(messages, tools=None)
+    return {"messages": [response]}
+
 def supervisor_node(state: AgentState) -> dict:
     decision = llm_client.invoke_structured(
         messages=[
             HumanMessage(
                 content=(
-                    "You are the supervisor of a banking investigation system.\n"
-                    "Choose the next worker that should handle the request.\n\n"
-                    "Available workers:\n"
-                    "- transaction: handles transaction-related requests\n"
-                    "- account: handles account-related requests\n"
-                    "- finish: use when the investigation is complete\n\n"
-                    "Return the next worker only through the structured schema."
+                    "You are a supervisor controlling a multi-agent banking system.\n\n"
+                    "Your ONLY job is to choose the next worker.\n"
+                    "DO NOT answer the user's request.\n"
+                    "DO NOT summarize transaction or account data.\n"
+                    "DO NOT provide explanations or recommendations.\n\n"
+                    "Available choices:\n"
+                    "- transaction: send the request to the transaction worker\n"
+                    "- account: send the request to the account worker\n"
+                    "- finish: use when a worker has completed the investigation\n\n"
+                    "If the latest worker response contains the requested information "
+                    "and does not request another tool, choose 'finish'.\n"
+                    "If more work is required, choose the appropriate worker.\n\n"
+                    "Return ONLY the structured SupervisorDecision."
                 )
             ),
             *state["messages"],

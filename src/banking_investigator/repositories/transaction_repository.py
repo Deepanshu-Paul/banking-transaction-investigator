@@ -1,7 +1,8 @@
 from typing import Any
 
 import psycopg
-
+from psycopg.errors import QueryCanceled
+from banking_investigator.services.errors import RetryableError
 from banking_investigator.config.settings import settings
 
 
@@ -9,7 +10,33 @@ class TransactionRepository:
     def __init__(self):
         self.database_url = settings.database_url.replace("+psycopg", "")
 
-    def find_by_id(self, transaction_id: str) -> dict[str, Any] | None:
+    def _fetch_one(
+        self,
+        query: str,
+        params: tuple[Any, ...] = (),
+    ) -> tuple[Any, ...] | None:
+        try:
+            with psycopg.connect(self.database_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SET statement_timeout = "
+                        f"{settings.db_statement_timeout_ms}"
+                    )
+
+                    cur.execute(query, params)
+                    return cur.fetchone()
+
+        except QueryCanceled as exc:
+            raise RetryableError(
+                f"Database query timed out after "
+                f"{settings.db_statement_timeout_ms} ms"
+            ) from exc
+
+    def find_by_id(
+        self,
+        transaction_id: str,
+    ) -> dict[str, Any] | None:
+
         query = """
             SELECT
                 transaction_id,
@@ -24,10 +51,7 @@ class TransactionRepository:
             WHERE transaction_id = %s
         """
 
-        with psycopg.connect(self.database_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, (transaction_id,))
-                row = cur.fetchone()
+        row = self._fetch_one(query, (transaction_id,))
 
         if row is None:
             return None

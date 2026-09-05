@@ -19,6 +19,7 @@ def run_test(request: str, thread_id: str) -> None:
         "route": None,
         "approval_decision": None,
         "next_agent": None,
+        "investigation_data": [],
     }
 
     config = {
@@ -39,13 +40,12 @@ def run_test(request: str, thread_id: str) -> None:
     for message in result["messages"]:
         print(message)
 
-
 run_test(
     "Investigate transaction TXN1001.",
-    "supervisor-test-transaction-001",
+    "final-response-test-transaction-001",
 )
 
 run_test(
     "Show me the details of account ACC1001.",
-    "supervisor-test-account-001",
+    "final-response-test-account-001",
 )

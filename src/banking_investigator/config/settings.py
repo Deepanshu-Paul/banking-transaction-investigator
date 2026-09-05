@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str
 
+    db_statement_timeout_ms: int = 2000
+
     llm_provider: str
     llm_model: str
 
