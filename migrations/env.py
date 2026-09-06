@@ -18,7 +18,6 @@ from banking_investigator.models.base import Base
 from banking_investigator.models.customer import Customer
 from banking_investigator.models.account import Account
 from banking_investigator.models.transaction import Transaction
-from banking_investigator.memory.models import Memory
 
 
 # ---------------------------------------------------------

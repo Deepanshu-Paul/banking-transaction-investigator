@@ -1,7 +1,7 @@
 import psycopg
-
-from langgraph.graph import END, START, StateGraph
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.store.postgres import PostgresStore
 
 from banking_investigator.agents.nodes import (
     account_agent_node,
@@ -158,8 +158,10 @@ connection = psycopg.connect(
 )
 
 checkpointer = PostgresSaver(connection)
+store = PostgresStore(connection)
 
 
 graph = builder.compile(
     checkpointer=checkpointer,
+    store=store,
 )

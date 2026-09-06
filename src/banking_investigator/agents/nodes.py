@@ -1,4 +1,5 @@
 from langchain_core.messages import HumanMessage, ToolMessage
+from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 
 from banking_investigator.agents.routing import (
@@ -8,14 +9,11 @@ from banking_investigator.agents.routing import (
 from banking_investigator.agents.state import AgentState
 from banking_investigator.agents.tool_executor import execute_tool
 from banking_investigator.llm.factory import get_llm_client
-from banking_investigator.memory.collector import MemoryCollector
-from banking_investigator.memory.postgres_store import PostgresMemoryStore
 from banking_investigator.tools.schema import (
     GET_ACCOUNT_TOOL,
     GET_TRANSACTION_TOOL,
 )
 from banking_investigator.utils.serialization import serialize_for_llm
-
 
 TOOLS = [
     GET_TRANSACTION_TOOL,
@@ -120,7 +118,11 @@ def transaction_tool_node(state: AgentState) -> dict:
     )
 
 
-def account_tool_node(state: AgentState) -> dict:
+def account_tool_node(
+    state: AgentState,
+    *,
+    store: BaseStore,
+) -> dict:
     result = _execute_scoped_tools(
         state,
         {"get_account"},
@@ -141,10 +143,14 @@ def account_tool_node(state: AgentState) -> dict:
             customer_id = account_data.get("customer_id")
 
             if customer_id:
-                memory_collector = MemoryCollector()
-
-                memory_collector.collect_account_profile(
-                    account_data
+                store.put(
+                    ("customer", customer_id),
+                    "account_profile",
+                    {
+                        "account_id": account_data.get("account_id"),
+                        "account_type": account_data.get("account_type"),
+                        "status": account_data.get("status"),
+                    },
                 )
 
             break
@@ -274,22 +280,17 @@ def final_response_node(state: AgentState) -> dict:
     }
 
 
-def supervisor_node(state: AgentState) -> dict:
-    # ---------------------------------------------------------
-    # Load long-term memory
-    # ---------------------------------------------------------
-
-    memory_store = PostgresMemoryStore()
-
+def supervisor_node(
+    state: AgentState,
+    *,
+    store: BaseStore,
+) -> dict:
     customer_id = state.get("customer_id")
-
     memory_items = []
 
     if customer_id is not None:
-        namespace = f"customer:{customer_id}"
-
-        memories = memory_store.retrieve_namespace(
-            namespace=namespace,
+        memories = store.search(
+            ("customer", customer_id),
         )
 
         memory_items = [
@@ -334,5 +335,4 @@ def supervisor_node(state: AgentState) -> dict:
 
     return {
         "next_agent": decision.next_agent,
-        "memory": memory_items,
     }
