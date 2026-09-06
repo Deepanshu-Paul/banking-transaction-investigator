@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+codefrom abc import ABC, abstractmethod
 from typing import Any
 
 from banking_investigator.memory.models import MemoryItem
@@ -23,7 +23,15 @@ class MemoryStore(ABC):
         namespace: str,
         key: str,
     ) -> MemoryItem | None:
-        """Retrieve a memory item by namespace and key."""
+        """Retrieve one memory item by namespace and key."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def retrieve_namespace(
+        self,
+        namespace: str,
+    ) -> list[MemoryItem]:
+        """Retrieve all memory items within a namespace."""
         raise NotImplementedError
 
     @abstractmethod

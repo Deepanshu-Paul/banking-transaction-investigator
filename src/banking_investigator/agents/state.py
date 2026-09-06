@@ -10,3 +10,4 @@ class AgentState(TypedDict):
     approval_decision: str | None
     next_agent: str | None
     investigation_data: Annotated[list[dict], lambda x, y: x + y]
+    memory: list[dict]

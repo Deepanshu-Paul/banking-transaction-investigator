@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +15,17 @@ class PostgresMemoryStore(MemoryStore):
 
     def __init__(self) -> None:
         self.engine = create_engine(settings.database_url)
+
+    @staticmethod
+    def _to_item(memory: Memory) -> MemoryItem:
+        """Convert a database model into a domain memory item."""
+        return MemoryItem(
+            namespace=memory.namespace,
+            key=memory.key,
+            value=memory.value,
+            created_at=memory.created_at,
+            updated_at=memory.updated_at,
+        )
 
     def store(
         self,
@@ -49,20 +61,14 @@ class PostgresMemoryStore(MemoryStore):
             session.commit()
             session.refresh(memory)
 
-            return MemoryItem(
-                namespace=memory.namespace,
-                key=memory.key,
-                value=memory.value,
-                created_at=memory.created_at,
-                updated_at=memory.updated_at,
-            )
+            return self._to_item(memory)
 
     def retrieve(
         self,
         namespace: str,
         key: str,
     ) -> MemoryItem | None:
-        """Retrieve a memory item by namespace and key."""
+        """Retrieve one memory item by namespace and key."""
 
         with Session(self.engine) as session:
             statement = select(Memory).where(
@@ -75,13 +81,27 @@ class PostgresMemoryStore(MemoryStore):
             if memory is None:
                 return None
 
-            return MemoryItem(
-                namespace=memory.namespace,
-                key=memory.key,
-                value=memory.value,
-                created_at=memory.created_at,
-                updated_at=memory.updated_at,
+            return self._to_item(memory)
+
+    def retrieve_namespace(
+        self,
+        namespace: str,
+    ) -> list[MemoryItem]:
+        """Retrieve all memory items within a namespace."""
+
+        with Session(self.engine) as session:
+            statement = (
+                select(Memory)
+                .where(Memory.namespace == namespace)
+                .order_by(Memory.updated_at.desc())
             )
+
+            memories = session.execute(statement).scalars().all()
+
+            return [
+                self._to_item(memory)
+                for memory in memories
+            ]
 
     def delete(
         self,
