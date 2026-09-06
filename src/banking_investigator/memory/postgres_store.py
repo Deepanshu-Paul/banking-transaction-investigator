@@ -1,5 +1,4 @@
-
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import create_engine, select
@@ -25,6 +24,7 @@ class PostgresMemoryStore(MemoryStore):
             value=memory.value,
             created_at=memory.created_at,
             updated_at=memory.updated_at,
+            expires_at=memory.expires_at,
         )
 
     def store(
@@ -32,10 +32,19 @@ class PostgresMemoryStore(MemoryStore):
         namespace: str,
         key: str,
         value: Any,
+        ttl_seconds: int | None = None,
     ) -> MemoryItem:
-        """Create a new memory or update an existing one."""
+        """Create or update a memory with an optional TTL."""
 
         now = datetime.now(timezone.utc)
+
+        expires_at = None
+
+        if ttl_seconds is not None:
+            if ttl_seconds <= 0:
+                raise ValueError("ttl_seconds must be greater than zero")
+
+            expires_at = now + timedelta(seconds=ttl_seconds)
 
         with Session(self.engine) as session:
             statement = select(Memory).where(
@@ -52,11 +61,15 @@ class PostgresMemoryStore(MemoryStore):
                     value=value,
                     created_at=now,
                     updated_at=now,
+                    expires_at=expires_at,
                 )
                 session.add(memory)
             else:
                 memory.value = value
                 memory.updated_at = now
+
+                if ttl_seconds is not None:
+                    memory.expires_at = expires_at
 
             session.commit()
             session.refresh(memory)
@@ -68,7 +81,9 @@ class PostgresMemoryStore(MemoryStore):
         namespace: str,
         key: str,
     ) -> MemoryItem | None:
-        """Retrieve one memory item by namespace and key."""
+        """Retrieve a memory if it has not expired."""
+
+        now = datetime.now(timezone.utc)
 
         with Session(self.engine) as session:
             statement = select(Memory).where(
@@ -81,21 +96,35 @@ class PostgresMemoryStore(MemoryStore):
             if memory is None:
                 return None
 
+            if (
+                memory.expires_at is not None
+                and memory.expires_at <= now
+            ):
+                return None
+
             return self._to_item(memory)
 
     def retrieve_namespace(
         self,
         namespace: str,
     ) -> list[MemoryItem]:
-        """Retrieve all memory items within a namespace."""
+        """Retrieve all non-expired memories within a namespace."""
+
+        now = datetime.now(timezone.utc)
+
+        statement = (
+            select(Memory)
+            .where(
+                Memory.namespace == namespace,
+                (
+                    (Memory.expires_at.is_(None))
+                    | (Memory.expires_at > now)
+                ),
+            )
+            .order_by(Memory.updated_at.desc())
+        )
 
         with Session(self.engine) as session:
-            statement = (
-                select(Memory)
-                .where(Memory.namespace == namespace)
-                .order_by(Memory.updated_at.desc())
-            )
-
             memories = session.execute(statement).scalars().all()
 
             return [

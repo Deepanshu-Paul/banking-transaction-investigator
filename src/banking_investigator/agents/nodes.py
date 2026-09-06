@@ -5,10 +5,11 @@ from banking_investigator.agents.routing import (
     RouteDecision,
     SupervisorDecision,
 )
-from banking_investigator.memory.postgres_store import PostgresMemoryStore
 from banking_investigator.agents.state import AgentState
 from banking_investigator.agents.tool_executor import execute_tool
 from banking_investigator.llm.factory import get_llm_client
+from banking_investigator.memory.collector import MemoryCollector
+from banking_investigator.memory.postgres_store import PostgresMemoryStore
 from banking_investigator.tools.schema import (
     GET_ACCOUNT_TOOL,
     GET_TRANSACTION_TOOL,
@@ -120,10 +121,38 @@ def transaction_tool_node(state: AgentState) -> dict:
 
 
 def account_tool_node(state: AgentState) -> dict:
-    return _execute_scoped_tools(
+    result = _execute_scoped_tools(
         state,
         {"get_account"},
     )
+
+    customer_id = None
+
+    for item in result["investigation_data"]:
+        result_data = item["result"]
+
+        if (
+            item["tool"] == "get_account"
+            and result_data["success"]
+            and result_data["data"] is not None
+        ):
+            account_data = result_data["data"]
+
+            customer_id = account_data.get("customer_id")
+
+            if customer_id:
+                memory_collector = MemoryCollector()
+
+                memory_collector.collect_account_profile(
+                    account_data
+                )
+
+            break
+
+    return {
+        **result,
+        "customer_id": customer_id,
+    }
 
 
 def human_approval_node(state: AgentState) -> dict:
@@ -252,19 +281,9 @@ def supervisor_node(state: AgentState) -> dict:
 
     memory_store = PostgresMemoryStore()
 
-    user_message = state["messages"][0].content
+    customer_id = state.get("customer_id")
 
     memory_items = []
-
-    customer_id = None
-
-    if "CUST" in user_message:
-        words = user_message.split()
-
-        for word in words:
-            if word.startswith("CUST"):
-                customer_id = word.strip(".,!?")
-                break
 
     if customer_id is not None:
         namespace = f"customer:{customer_id}"

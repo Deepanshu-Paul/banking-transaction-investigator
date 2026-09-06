@@ -11,3 +11,4 @@ class AgentState(TypedDict):
     next_agent: str | None
     investigation_data: Annotated[list[dict], lambda x, y: x + y]
     memory: list[dict]
+    customer_id: str | None

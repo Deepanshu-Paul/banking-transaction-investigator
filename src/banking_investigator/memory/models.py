@@ -17,6 +17,7 @@ class MemoryItem:
     value: Any
     created_at: datetime
     updated_at: datetime
+    expires_at: datetime | None
 
 
 class Memory(Base):
@@ -58,4 +59,9 @@ class Memory(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
+    )
+
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )

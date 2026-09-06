@@ -23,8 +23,9 @@ class MemoryService:
         key: str,
         value: Any,
         memory_type: MemoryType,
+        ttl_seconds: int | None = None,
     ) -> MemoryItem:
-        """Persist a memory only when its type is allowed."""
+        """Persist an allowed memory with an optional TTL."""
 
         if not is_memory_allowed(memory_type):
             raise ValueError(
@@ -35,13 +36,14 @@ class MemoryService:
             namespace=namespace,
             key=key,
             value=value,
+            ttl_seconds=ttl_seconds,
         )
 
     def recall(
         self,
         namespace: str,
     ) -> list[MemoryItem]:
-        """Retrieve all memories for a namespace."""
+        """Retrieve all non-expired memories for a namespace."""
 
         return self.store.retrieve_namespace(
             namespace=namespace,
