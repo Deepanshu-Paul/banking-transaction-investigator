@@ -1,6 +1,10 @@
 from typing import Any
 
 from banking_investigator.memory.models import MemoryItem
+from banking_investigator.memory.policy import (
+    MemoryType,
+    is_memory_allowed,
+)
 from banking_investigator.memory.postgres_store import PostgresMemoryStore
 
 
@@ -18,8 +22,14 @@ class MemoryService:
         namespace: str,
         key: str,
         value: Any,
+        memory_type: MemoryType,
     ) -> MemoryItem:
-        """Persist a selected piece of information as memory."""
+        """Persist a memory only when its type is allowed."""
+
+        if not is_memory_allowed(memory_type):
+            raise ValueError(
+                f"Memory type '{memory_type}' is not allowed."
+            )
 
         return self.store.store(
             namespace=namespace,

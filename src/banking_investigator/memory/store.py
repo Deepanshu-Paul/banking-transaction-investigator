@@ -1,4 +1,4 @@
-codefrom abc import ABC, abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any
 
 from banking_investigator.memory.models import MemoryItem
