@@ -13,9 +13,13 @@ with PostgresSaver.from_conn_string(
 ) as checkpointer:
     checkpointer.setup()
 
+
 with PostgresStore.from_conn_string(
     settings.postgres_conn_string
 ) as store:
     store.setup()
 
-print("LangGraph checkpoint and store tables initialized successfully.")
+
+print(
+    "LangGraph checkpoint and store tables initialized successfully."
+)

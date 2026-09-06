@@ -1,5 +1,5 @@
 from langchain_core.messages import HumanMessage, ToolMessage
-from langgraph.store.base import BaseStore
+from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from banking_investigator.agents.routing import (
@@ -14,6 +14,7 @@ from banking_investigator.tools.schema import (
     GET_TRANSACTION_TOOL,
 )
 from banking_investigator.utils.serialization import serialize_for_llm
+
 
 TOOLS = [
     GET_TRANSACTION_TOOL,
@@ -75,6 +76,7 @@ def _execute_scoped_tools(
     allowed_tools: set[str],
 ) -> dict:
     last_message = state["messages"][-1]
+
     tool_messages = []
     investigation_data = []
 
@@ -93,10 +95,12 @@ def _execute_scoped_tools(
 
         result_data = tool_result.model_dump()
 
-        investigation_data.append({
-            "tool": tool_name,
-            "result": result_data,
-        })
+        investigation_data.append(
+            {
+                "tool": tool_name,
+                "result": result_data,
+            }
+        )
 
         tool_messages.append(
             ToolMessage(
@@ -120,13 +124,19 @@ def transaction_tool_node(state: AgentState) -> dict:
 
 def account_tool_node(
     state: AgentState,
-    *,
-    store: BaseStore,
+    runtime: Runtime,
 ) -> dict:
     result = _execute_scoped_tools(
         state,
         {"get_account"},
     )
+
+    store = runtime.store
+
+    if store is None:
+        raise RuntimeError(
+            "LangGraph store is not configured."
+        )
 
     customer_id = None
 
@@ -282,9 +292,15 @@ def final_response_node(state: AgentState) -> dict:
 
 def supervisor_node(
     state: AgentState,
-    *,
-    store: BaseStore,
+    runtime: Runtime,
 ) -> dict:
+    store = runtime.store
+
+    if store is None:
+        raise RuntimeError(
+            "LangGraph store is not configured."
+        )
+
     customer_id = state.get("customer_id")
     memory_items = []
 
@@ -301,10 +317,6 @@ def supervisor_node(
             }
             for memory in memories
         ]
-
-    # ---------------------------------------------------------
-    # Supervisor decision
-    # ---------------------------------------------------------
 
     decision_messages = [
         HumanMessage(

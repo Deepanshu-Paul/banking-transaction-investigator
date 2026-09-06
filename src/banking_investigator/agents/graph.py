@@ -1,4 +1,5 @@
 import psycopg
+
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.postgres import PostgresStore
@@ -52,7 +53,6 @@ def should_continue_account(state: AgentState) -> str:
 
 builder = StateGraph(AgentState)
 
-
 # -------------------------
 # Nodes
 # -------------------------
@@ -82,7 +82,10 @@ builder.add_node(
     account_tool_node,
 )
 
-builder.add_node("final_response", final_response_node)
+builder.add_node(
+    "final_response",
+    final_response_node,
+)
 
 # -------------------------
 # START → SUPERVISOR
@@ -92,7 +95,6 @@ builder.add_edge(
     START,
     "supervisor",
 )
-
 
 # -------------------------
 # SUPERVISOR → WORKER
@@ -108,7 +110,10 @@ builder.add_conditional_edges(
     },
 )
 
-builder.add_edge("final_response", END)
+builder.add_edge(
+    "final_response",
+    END,
+)
 
 # -------------------------
 # WORKER → TOOL / SUPERVISOR
@@ -132,7 +137,6 @@ builder.add_conditional_edges(
     },
 )
 
-
 # -------------------------
 # TOOL → WORKER
 # -------------------------
@@ -147,9 +151,8 @@ builder.add_edge(
     "account_agent",
 )
 
-
 # -------------------------
-# PostgreSQL checkpointing
+# PostgreSQL persistence
 # -------------------------
 
 connection = psycopg.connect(
@@ -159,7 +162,6 @@ connection = psycopg.connect(
 
 checkpointer = PostgresSaver(connection)
 store = PostgresStore(connection)
-
 
 graph = builder.compile(
     checkpointer=checkpointer,
