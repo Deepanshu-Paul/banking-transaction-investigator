@@ -6,7 +6,12 @@ from langgraph.runtime import Runtime
 from langgraph.store.postgres import PostgresStore
 
 from banking_investigator.agents import nodes
-from banking_investigator.agents.graph import checkpointer, graph, store
+from banking_investigator.agents.graph import (
+    checkpointer,
+    embeddings,
+    graph,
+    store,
+)
 from banking_investigator.config.settings import settings
 from banking_investigator.models.tool_result import ToolResult
 
@@ -18,28 +23,46 @@ def setup_langgraph_postgres_tables() -> None:
     store.setup()
 
 
-def test_postgres_store_writes_and_reads_customer_memory() -> None:
+@pytest.fixture
+def semantic_store():
+    with PostgresStore.from_conn_string(
+        settings.postgres_conn_string,
+        index={
+            "dims": 1536,
+            "embed": embeddings,
+            "fields": ["text"],
+        },
+    ) as memory_store:
+        memory_store.setup()
+        yield memory_store
+
+
+def test_postgres_store_writes_and_reads_customer_memory(
+    semantic_store,
+) -> None:
     namespace = (
         "customer",
         f"CUST{uuid4().hex[:8].upper()}",
     )
 
-    with PostgresStore.from_conn_string(
-        settings.postgres_conn_string
-    ) as memory_store:
-        memory_store.setup()
+    profile = {
+        "text": (
+            "Customer CUST1001 has a SAVINGS account "
+            "ACC1001 which is ACTIVE."
+        ),
+        "account_id": "ACC1001",
+        "account_type": "SAVINGS",
+        "status": "ACTIVE",
+    }
 
-        memory_store.put(
+    try:
+        semantic_store.put(
             namespace,
             "account_profile",
-            {
-                "account_id": "ACC1001",
-                "account_type": "SAVINGS",
-                "status": "ACTIVE",
-            },
+            profile,
         )
 
-        item = memory_store.get(
+        item = semantic_store.get(
             namespace,
             "account_profile",
         )
@@ -47,16 +70,47 @@ def test_postgres_store_writes_and_reads_customer_memory() -> None:
         assert item is not None
         assert item.namespace == namespace
         assert item.key == "account_profile"
-        assert item.value == {
-            "account_id": "ACC1001",
-            "account_type": "SAVINGS",
-            "status": "ACTIVE",
-        }
-
-        memory_store.delete(
+        assert item.value == profile
+    finally:
+        semantic_store.delete(
             namespace,
             "account_profile",
         )
+
+
+def test_semantic_search_finds_account_profile(
+    semantic_store,
+) -> None:
+    customer_id = f"CUST{uuid4().hex[:8].upper()}"
+    namespace = ("customer", customer_id)
+
+    try:
+        semantic_store.put(
+            namespace,
+            "account_profile",
+            {
+                "text": (
+                    f"Customer {customer_id} has a SAVINGS account "
+                    "ACC1001 which is ACTIVE."
+                ),
+                "account_id": "ACC1001",
+                "account_type": "SAVINGS",
+                "status": "ACTIVE",
+            },
+        )
+
+        memories = semantic_store.search(
+            namespace,
+            query="Which of this customer's bank accounts can still be used?",
+            limit=5,
+        )
+
+        assert [memory.key for memory in memories] == [
+            "account_profile"
+        ]
+        assert memories[0].value["account_id"] == "ACC1001"
+    finally:
+        semantic_store.delete(namespace, "account_profile")
 
 
 def test_account_lookup_writes_customer_memory(monkeypatch) -> None:
@@ -117,6 +171,10 @@ def test_account_lookup_writes_customer_memory(monkeypatch) -> None:
         assert item is not None
 
         assert item.value == {
+            "text": (
+                f"Customer {customer_id} has a SAVINGS account "
+                f"{account_id} which is ACTIVE."
+            ),
             "account_id": account_id,
             "account_type": "SAVINGS",
             "status": "ACTIVE",

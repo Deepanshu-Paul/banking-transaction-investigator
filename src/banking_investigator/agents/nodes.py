@@ -15,7 +15,6 @@ from banking_investigator.tools.schema import (
 )
 from banking_investigator.utils.serialization import serialize_for_llm
 
-
 TOOLS = [
     GET_TRANSACTION_TOOL,
     GET_ACCOUNT_TOOL,
@@ -153,13 +152,22 @@ def account_tool_node(
             customer_id = account_data.get("customer_id")
 
             if customer_id:
+                account_id = account_data.get("account_id")
+                account_type = account_data.get("account_type")
+                status = account_data.get("status")
+
                 store.put(
                     ("customer", customer_id),
                     "account_profile",
                     {
-                        "account_id": account_data.get("account_id"),
-                        "account_type": account_data.get("account_type"),
-                        "status": account_data.get("status"),
+                        "text": (
+                            f"Customer {customer_id} has a "
+                            f"{account_type} account {account_id} "
+                            f"which is {status}."
+                        ),
+                        "account_id": account_id,
+                        "account_type": account_type,
+                        "status": status,
                     },
                 )
 
@@ -305,8 +313,19 @@ def supervisor_node(
     memory_items = []
 
     if customer_id is not None:
+        search_query = next(
+            (
+                str(message.content)
+                for message in reversed(state["messages"])
+                if message.type == "human"
+            ),
+            "",
+        )
+
         memories = store.search(
             ("customer", customer_id),
+            query=search_query,
+            limit=5,
         )
 
         memory_items = [

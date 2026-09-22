@@ -1,5 +1,5 @@
 import psycopg
-
+from langchain_openai import OpenAIEmbeddings
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.postgres import PostgresStore
@@ -14,6 +14,11 @@ from banking_investigator.agents.nodes import (
 )
 from banking_investigator.agents.state import AgentState
 from banking_investigator.config.settings import settings
+
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=settings.openai_api_key,
+)
 
 
 def route_after_supervisor(state: AgentState) -> str:
@@ -161,7 +166,14 @@ connection = psycopg.connect(
 )
 
 checkpointer = PostgresSaver(connection)
-store = PostgresStore(connection)
+store = PostgresStore(
+    connection,
+    index={
+        "dims": 1536,
+        "embed": embeddings,
+        "fields": ["text"],
+    },
+)
 
 graph = builder.compile(
     checkpointer=checkpointer,
