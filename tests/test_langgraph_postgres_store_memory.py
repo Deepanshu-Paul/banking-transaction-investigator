@@ -96,6 +96,7 @@ def test_semantic_search_finds_account_profile(
                 "account_id": "ACC1001",
                 "account_type": "SAVINGS",
                 "status": "ACTIVE",
+                "memory_type": "customer_profile",
             },
         )
 
@@ -178,6 +179,7 @@ def test_account_lookup_writes_customer_memory(monkeypatch) -> None:
             "account_id": account_id,
             "account_type": "SAVINGS",
             "status": "ACTIVE",
+            "memory_type": "customer_profile",
         }
 
     finally:
@@ -333,4 +335,52 @@ def test_customer_memory_persists_across_graph_runs(
         store.delete(
             ("customer", customer_id),
             "account_profile",
+        )
+
+
+def test_search_filters_by_memory_type(
+    semantic_store,
+) -> None:
+    customer_id = f"CUST{uuid4().hex[:8].upper()}"
+    namespace = ("customer", customer_id)
+
+    try:
+        semantic_store.put(
+            namespace,
+            "account_profile",
+            {
+                "text": "Customer has an active savings account.",
+                "account_id": "ACC1001",
+                "memory_type": "customer_profile",
+            },
+        )
+
+        semantic_store.put(
+            namespace,
+            "customer_preference",
+            {
+                "text": "Customer prefers email communication.",
+                "memory_type": "customer_preference",
+            },
+        )
+
+        memories = semantic_store.search(
+            namespace,
+            query="customer information",
+            filter={"memory_type": "customer_profile"},
+            limit=5,
+        )
+
+        assert [memory.key for memory in memories] == [
+            "account_profile"
+        ]
+
+    finally:
+        semantic_store.delete(
+            namespace,
+            "account_profile",
+        )
+        semantic_store.delete(
+            namespace,
+            "customer_preference",
         )

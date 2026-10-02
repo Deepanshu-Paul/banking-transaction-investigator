@@ -35,6 +35,7 @@ def retrieve_customer_memory(
     runtime: Runtime,
     customer_id: str,
     query: str,
+    memory_type: str,
     limit: int = 5,
 ) -> list[dict]:
     """Retrieve customer memory through the configured LangGraph store."""
@@ -48,6 +49,7 @@ def retrieve_customer_memory(
     memories = store.search(
         ("customer", customer_id),
         query=query,
+        filter={"memory_type": memory_type},
         limit=limit,
     )
 
@@ -198,6 +200,7 @@ def account_tool_node(
                         "account_id": account_id,
                         "account_type": account_type,
                         "status": status,
+                        "memory_type": "customer_profile",
                     },
                 )
 
@@ -349,6 +352,7 @@ def supervisor_node(
             runtime=runtime,
             customer_id=customer_id,
             query=search_query,
+            memory_type="customer_profile",
             limit=5,
         )
 
