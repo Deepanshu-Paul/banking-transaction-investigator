@@ -31,6 +31,36 @@ ACCOUNT_TOOLS = [
 llm_client = get_llm_client()
 
 
+def retrieve_customer_memory(
+    runtime: Runtime,
+    customer_id: str,
+    query: str,
+    limit: int = 5,
+) -> list[dict]:
+    """Retrieve customer memory through the configured LangGraph store."""
+    store = runtime.store
+
+    if store is None:
+        raise RuntimeError(
+            "LangGraph store is not configured."
+        )
+
+    memories = store.search(
+        ("customer", customer_id),
+        query=query,
+        limit=limit,
+    )
+
+    return [
+        {
+            "namespace": memory.namespace,
+            "key": memory.key,
+            "value": memory.value,
+        }
+        for memory in memories
+    ]
+
+
 def llm_node(state: AgentState) -> dict:
     response = llm_client.invoke(
         state["messages"],
@@ -302,13 +332,6 @@ def supervisor_node(
     state: AgentState,
     runtime: Runtime,
 ) -> dict:
-    store = runtime.store
-
-    if store is None:
-        raise RuntimeError(
-            "LangGraph store is not configured."
-        )
-
     customer_id = state.get("customer_id")
     memory_items = []
 
@@ -322,20 +345,12 @@ def supervisor_node(
             "",
         )
 
-        memories = store.search(
-            ("customer", customer_id),
+        memory_items = retrieve_customer_memory(
+            runtime=runtime,
+            customer_id=customer_id,
             query=search_query,
             limit=5,
         )
-
-        memory_items = [
-            {
-                "namespace": memory.namespace,
-                "key": memory.key,
-                "value": memory.value,
-            }
-            for memory in memories
-        ]
 
     decision_messages = [
         HumanMessage(
