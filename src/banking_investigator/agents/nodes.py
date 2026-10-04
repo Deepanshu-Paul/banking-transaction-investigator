@@ -58,10 +58,10 @@ def retrieve_customer_memory(
             "namespace": memory.namespace,
             "key": memory.key,
             "value": memory.value,
+            "score": memory.score,
         }
         for memory in memories
     ]
-
 
 def llm_node(state: AgentState) -> dict:
     response = llm_client.invoke(

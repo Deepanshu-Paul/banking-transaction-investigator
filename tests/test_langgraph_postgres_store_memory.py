@@ -393,6 +393,16 @@ def test_retrieve_customer_memory_filters_by_type() -> None:
             "memory_type": "customer_profile",
             "account_id": "ACC1001",
         }
+        score = 0.92
+
+    class WeakMemory:
+        namespace = ("customer", "CUST1001")
+        key = "old_profile"
+        value = {
+            "memory_type": "customer_profile",
+            "account_id": "OLD1001",
+        }
+        score = 0.40
 
     class FakeStore:
         def search(self, namespace, *, query, filter, limit):
@@ -400,7 +410,8 @@ def test_retrieve_customer_memory_filters_by_type() -> None:
             assert query == "show account"
             assert filter == {"memory_type": "customer_profile"}
             assert limit == 5
-            return [FakeMemory()]
+
+            return [FakeMemory(), WeakMemory()]
 
     result = nodes.retrieve_customer_memory(
         runtime=Runtime(store=FakeStore()),
@@ -417,5 +428,15 @@ def test_retrieve_customer_memory_filters_by_type() -> None:
                 "memory_type": "customer_profile",
                 "account_id": "ACC1001",
             },
-        }
+            "score": 0.92,
+        },
+        {
+            "namespace": ("customer", "CUST1001"),
+            "key": "old_profile",
+            "value": {
+                "memory_type": "customer_profile",
+                "account_id": "OLD1001",
+            },
+            "score": 0.40,
+        },
     ]
