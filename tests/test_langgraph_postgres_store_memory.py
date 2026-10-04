@@ -384,3 +384,38 @@ def test_search_filters_by_memory_type(
             namespace,
             "customer_preference",
         )
+
+def test_retrieve_customer_memory_filters_by_type() -> None:
+    class FakeMemory:
+        namespace = ("customer", "CUST1001")
+        key = "account_profile"
+        value = {
+            "memory_type": "customer_profile",
+            "account_id": "ACC1001",
+        }
+
+    class FakeStore:
+        def search(self, namespace, *, query, filter, limit):
+            assert namespace == ("customer", "CUST1001")
+            assert query == "show account"
+            assert filter == {"memory_type": "customer_profile"}
+            assert limit == 5
+            return [FakeMemory()]
+
+    result = nodes.retrieve_customer_memory(
+        runtime=Runtime(store=FakeStore()),
+        customer_id="CUST1001",
+        query="show account",
+        memory_type="customer_profile",
+    )
+
+    assert result == [
+        {
+            "namespace": ("customer", "CUST1001"),
+            "key": "account_profile",
+            "value": {
+                "memory_type": "customer_profile",
+                "account_id": "ACC1001",
+            },
+        }
+    ]
