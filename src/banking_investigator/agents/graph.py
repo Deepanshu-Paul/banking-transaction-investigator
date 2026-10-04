@@ -1,4 +1,5 @@
-import psycopg
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 from langchain_openai import OpenAIEmbeddings
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
@@ -160,14 +161,22 @@ builder.add_edge(
 # PostgreSQL persistence
 # -------------------------
 
-connection = psycopg.connect(
+connection_pool = ConnectionPool(
     settings.postgres_conn_string,
-    autocommit=True,
+    min_size=1,
+    max_size=10,
+    open=True,
+    kwargs={
+        "autocommit": True,
+        "prepare_threshold": 0,
+        "row_factory": dict_row,
+    },
 )
 
-checkpointer = PostgresSaver(connection)
+checkpointer = PostgresSaver(connection_pool)
+
 store = PostgresStore(
-    connection,
+    connection_pool,
     index={
         "dims": 1536,
         "embed": embeddings,

@@ -31,6 +31,67 @@ ACCOUNT_TOOLS = [
 llm_client = get_llm_client()
 
 
+def retrieve_customer_memory(
+    runtime: Runtime,
+    customer_id: str,
+    query: str,
+    memory_type: str,
+    limit: int = 5,
+) -> list[dict]:
+    """Retrieve customer memory through the configured LangGraph store."""
+    store = runtime.store
+
+    if store is None:
+        raise RuntimeError(
+            "LangGraph store is not configured."
+        )
+
+    memories = store.search(
+        ("customer", customer_id),
+        query=query,
+        filter={"memory_type": memory_type},
+        limit=limit,
+    )
+
+    return [
+        {
+            "namespace": memory.namespace,
+            "key": memory.key,
+            "value": memory.value,
+            "score": memory.score,
+        }
+        for memory in memories
+        if memory.score is not None and memory.score >= 0.2
+    ]
+
+def format_customer_memory(
+    memory_items: list[dict],
+) -> str:
+    if not memory_items:
+        return "No relevant customer memory found."
+
+    lines = ["Customer Memory:"]
+
+    for memory in memory_items:
+        value = memory["value"]
+        namespace = memory["namespace"]
+        customer_id = (
+        namespace[1]
+        if len(namespace) > 1
+        else "unknown"
+    )
+
+        lines.append(
+            f"- {memory['key']}: "
+            f"customer_id={customer_id}, "
+            f"account_id={value.get('account_id')}, "
+            f"account_type={value.get('account_type')}, "
+            f"status={value.get('status')}, "
+            f"relevance={memory.get('score')}"
+        )
+
+    return "\n".join(lines)
+
 def llm_node(state: AgentState) -> dict:
     response = llm_client.invoke(
         state["messages"],
@@ -168,6 +229,7 @@ def account_tool_node(
                         "account_id": account_id,
                         "account_type": account_type,
                         "status": status,
+                        "memory_type": "customer_profile",
                     },
                 )
 
@@ -302,15 +364,10 @@ def supervisor_node(
     state: AgentState,
     runtime: Runtime,
 ) -> dict:
-    store = runtime.store
-
-    if store is None:
-        raise RuntimeError(
-            "LangGraph store is not configured."
-        )
-
     customer_id = state.get("customer_id")
     memory_items = []
+
+    memory_context = "No relevant customer memory found."
 
     if customer_id is not None:
         search_query = next(
@@ -322,20 +379,15 @@ def supervisor_node(
             "",
         )
 
-        memories = store.search(
-            ("customer", customer_id),
+        memory_items = retrieve_customer_memory(
+            runtime=runtime,
+            customer_id=customer_id,
             query=search_query,
+            memory_type="customer_profile",
             limit=5,
         )
 
-        memory_items = [
-            {
-                "namespace": memory.namespace,
-                "key": memory.key,
-                "value": memory.value,
-            }
-            for memory in memories
-        ]
+        memory_context = format_customer_memory(memory_items)
 
     decision_messages = [
         HumanMessage(
@@ -352,7 +404,7 @@ def supervisor_node(
                 "If the latest worker response contains the requested information "
                 "and does not request another tool, choose 'finish'.\n"
                 "If more work is required, choose the appropriate worker.\n\n"
-                f"Long-term memory available for this run:\n{memory_items}\n\n"
+                f"Long-term memory available for this run:\n{memory_context}\n\n"
                 "Return ONLY the structured SupervisorDecision."
             )
         ),
