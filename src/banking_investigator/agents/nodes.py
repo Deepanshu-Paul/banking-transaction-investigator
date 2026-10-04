@@ -61,7 +61,36 @@ def retrieve_customer_memory(
             "score": memory.score,
         }
         for memory in memories
+        if memory.score is not None and memory.score >= 0.2
     ]
+
+def format_customer_memory(
+    memory_items: list[dict],
+) -> str:
+    if not memory_items:
+        return "No relevant customer memory found."
+
+    lines = ["Customer Memory:"]
+
+    for memory in memory_items:
+        value = memory["value"]
+        namespace = memory["namespace"]
+        customer_id = (
+        namespace[1]
+        if len(namespace) > 1
+        else "unknown"
+    )
+
+        lines.append(
+            f"- {memory['key']}: "
+            f"customer_id={customer_id}, "
+            f"account_id={value.get('account_id')}, "
+            f"account_type={value.get('account_type')}, "
+            f"status={value.get('status')}, "
+            f"relevance={memory.get('score')}"
+        )
+
+    return "\n".join(lines)
 
 def llm_node(state: AgentState) -> dict:
     response = llm_client.invoke(
@@ -338,6 +367,8 @@ def supervisor_node(
     customer_id = state.get("customer_id")
     memory_items = []
 
+    memory_context = "No relevant customer memory found."
+
     if customer_id is not None:
         search_query = next(
             (
@@ -356,6 +387,8 @@ def supervisor_node(
             limit=5,
         )
 
+        memory_context = format_customer_memory(memory_items)
+
     decision_messages = [
         HumanMessage(
             content=(
@@ -371,7 +404,7 @@ def supervisor_node(
                 "If the latest worker response contains the requested information "
                 "and does not request another tool, choose 'finish'.\n"
                 "If more work is required, choose the appropriate worker.\n\n"
-                f"Long-term memory available for this run:\n{memory_items}\n\n"
+                f"Long-term memory available for this run:\n{memory_context}\n\n"
                 "Return ONLY the structured SupervisorDecision."
             )
         ),

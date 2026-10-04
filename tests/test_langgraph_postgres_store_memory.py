@@ -402,7 +402,7 @@ def test_retrieve_customer_memory_filters_by_type() -> None:
             "memory_type": "customer_profile",
             "account_id": "OLD1001",
         }
-        score = 0.40
+        score = 0.10
 
     class FakeStore:
         def search(self, namespace, *, query, filter, limit):
@@ -419,7 +419,6 @@ def test_retrieve_customer_memory_filters_by_type() -> None:
         query="show account",
         memory_type="customer_profile",
     )
-
     assert result == [
         {
             "namespace": ("customer", "CUST1001"),
@@ -430,13 +429,87 @@ def test_retrieve_customer_memory_filters_by_type() -> None:
             },
             "score": 0.92,
         },
+    ]
+
+def test_format_customer_memory() -> None:
+    memory_items = [
         {
             "namespace": ("customer", "CUST1001"),
-            "key": "old_profile",
+            "key": "account_profile",
             "value": {
-                "memory_type": "customer_profile",
-                "account_id": "OLD1001",
+                "account_id": "ACC1001",
+                "account_type": "SAVINGS",
+                "status": "ACTIVE",
             },
-            "score": 0.40,
-        },
+            "score": 0.92,
+        }
     ]
+
+    result = nodes.format_customer_memory(memory_items)
+
+    assert "Customer Memory:" in result
+    assert "customer_id=CUST1001" in result
+    assert "account_id=ACC1001" in result
+    assert "account_type=SAVINGS" in result
+    assert "status=ACTIVE" in result
+    assert "relevance=0.92" in result
+
+def test_format_customer_memory_when_empty() -> None:
+    result = nodes.format_customer_memory([])
+
+    assert result == "No relevant customer memory found."
+
+
+# def test_observe_memory_similarity_scores(
+#     semantic_store,
+# ) -> None:
+#     customer_id = f"CUST{uuid4().hex[:8].upper()}"
+#     namespace = ("customer", customer_id)
+
+#     try:
+#         semantic_store.put(
+#             namespace,
+#             "account_profile",
+#             {
+#                 "text": (
+#                     f"Customer {customer_id} has a SAVINGS account "
+#                     "ACC1001 which is ACTIVE."
+#                 ),
+#                 "account_id": "ACC1001",
+#                 "account_type": "SAVINGS",
+#                 "status": "ACTIVE",
+#                 "memory_type": "customer_profile",
+#             },
+#         )
+
+#         relevant = semantic_store.search(
+#             namespace,
+#             query="What is my savings account status?",
+#             filter={"memory_type": "customer_profile"},
+#             limit=1,
+#         )
+
+#         unrelated = semantic_store.search(
+#             namespace,
+#             query="What is the weather in London?",
+#             filter={"memory_type": "customer_profile"},
+#             limit=1,
+#         )
+
+#         related = semantic_store.search(
+#                     namespace,
+#                     query="Tell me about my account",
+#                     filter={"memory_type": "customer_profile"},
+#                     limit=1,
+#                 )
+
+#         print("\nRelevant score:", relevant[0].score)
+#         print("Unrelated score:", unrelated[0].score)
+#         print("Related score:", related[0].score)
+
+#     finally:
+#         semantic_store.delete(
+#             namespace,
+#             "account_profile",
+#         )
+        
