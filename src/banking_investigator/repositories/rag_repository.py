@@ -120,3 +120,82 @@ class RagRepository:
                 )
 
         return chunk_id
+
+    def search_similar_chunks(
+        self,
+        embedding: list[float],
+        top_k: int = 3,
+        document_type: str | None = None,
+        region: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if len(embedding) != 1536:
+            raise ValueError(
+                "Embedding must contain exactly 1536 dimensions"
+            )
+
+        if top_k < 1:
+            raise ValueError("top_k must be >= 1")
+
+        embedding_value = "[" + ",".join(
+            str(value) for value in embedding
+        ) + "]"
+
+        conditions = [
+            "c.embedding IS NOT NULL",
+            "d.status = 'active'",
+            "d.effective_from <= CURRENT_TIMESTAMP",
+            "(d.effective_to IS NULL OR "
+            "d.effective_to > CURRENT_TIMESTAMP)",
+        ]
+
+        params: list[Any] = [embedding_value]
+
+        if document_type is not None:
+            conditions.append("d.document_type = %s")
+            params.append(document_type)
+
+        if region is not None:
+            conditions.append("d.region = %s")
+            params.append(region)
+
+        query = f"""
+            SELECT
+                c.chunk_id,
+                c.document_id,
+                c.document_version,
+                d.title,
+                c.chunk_index,
+                c.content,
+                c.metadata,
+                1 - (c.embedding <=> %s::vector) AS similarity
+            FROM rag_chunks AS c
+            JOIN rag_documents AS d
+              ON d.document_id = c.document_id
+             AND d.version = c.document_version
+            WHERE {" AND ".join(conditions)}
+            ORDER BY c.embedding <=> %s::vector
+            LIMIT %s
+        """
+
+        params.extend([embedding_value, top_k])
+
+        with __import__("psycopg").connect(
+            self.db.database_url
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, tuple(params))
+                rows = cur.fetchall()
+
+        return [
+            {
+                "chunk_id": str(row[0]),
+                "document_id": row[1],
+                "document_version": row[2],
+                "title": row[3],
+                "chunk_index": row[4],
+                "content": row[5],
+                "metadata": row[6],
+                "similarity": float(row[7]),
+            }
+            for row in rows
+        ]

@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Any
+from pathlib import Path
 
+from banking_investigator.rag.pdf_loader import load_pdf_text
 from banking_investigator.rag.chunking import chunk_text
 from banking_investigator.rag.embeddings import embed_text
 from banking_investigator.repositories.rag_repository import RagRepository
@@ -90,3 +92,35 @@ def ingest_document(
         "version": version,
         "chunk_count": len(chunks),
     }
+
+def ingest_pdf(
+    *,
+    pdf_path: str | Path,
+    document_id: str,
+    version: int,
+    title: str,
+    source: str,
+    document_type: str,
+    status: str,
+    effective_from: datetime,
+    effective_to: datetime | None,
+    metadata: dict[str, Any] | None = None,
+    max_tokens: int = 400,
+    overlap_tokens: int = 50,
+) -> dict[str, str | int]:
+    content = load_pdf_text(pdf_path)
+
+    return ingest_document(
+        document_id=document_id,
+        version=version,
+        title=title,
+        source=source,
+        document_type=document_type,
+        status=status,
+        effective_from=effective_from,
+        effective_to=effective_to,
+        content=content,
+        metadata=metadata,
+        max_tokens=max_tokens,
+        overlap_tokens=overlap_tokens,
+    )

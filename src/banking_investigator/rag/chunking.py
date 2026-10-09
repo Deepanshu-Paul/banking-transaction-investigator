@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import tiktoken
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 @dataclass(frozen=True)
@@ -27,30 +28,20 @@ def chunk_text(
         )
 
     encoding = tiktoken.get_encoding("cl100k_base")
-    tokens = encoding.encode(text)
 
-    chunks: list[RagChunk] = []
-    step = max_tokens - overlap_tokens
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=max_tokens,
+        chunk_overlap=overlap_tokens,
+        length_function=lambda value: len(encoding.encode(value)),
+    )
 
-    for chunk_index, start in enumerate(
-        range(0, len(tokens), step)
-    ):
-        chunk_tokens = tokens[start : start + max_tokens]
+    split_contents = splitter.split_text(text)
 
-        if not chunk_tokens:
-            break
-
-        content = encoding.decode(chunk_tokens)
-
-        chunks.append(
-            RagChunk(
-                chunk_index=chunk_index,
-                content=content,
-                token_count=len(chunk_tokens),
-            )
+    return [
+        RagChunk(
+            chunk_index=index,
+            content=content,
+            token_count=len(encoding.encode(content)),
         )
-
-        if start + max_tokens >= len(tokens):
-            break
-
-    return chunks
+        for index, content in enumerate(split_contents)
+    ]
