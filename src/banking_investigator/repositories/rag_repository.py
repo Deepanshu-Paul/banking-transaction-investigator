@@ -89,11 +89,16 @@ class RagRepository:
                 metadata,
                 token_count
             )
-            VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s
-            )
+        VALUES (
+            %s, %s, %s, %s, %s, %s::vector, %s, %s
+        )
         """
+        embedding_value = None
 
+        if embedding is not None:
+            embedding_value = "[" + ",".join(
+                str(value) for value in embedding
+            ) + "]"
         with __import__("psycopg").connect(
             self.db.database_url
         ) as conn:
@@ -106,7 +111,7 @@ class RagRepository:
                         document_version,
                         chunk_index,
                         content,
-                        embedding,
+                        embedding_value,
                         __import__("psycopg").types.json.Jsonb(
                             metadata or {}
                         ),
