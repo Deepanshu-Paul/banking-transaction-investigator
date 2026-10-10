@@ -1,4 +1,5 @@
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from banking_investigator.rag.answer import answer_with_rag
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
@@ -332,6 +333,43 @@ def account_agent_node(state: AgentState) -> dict:
         "messages": [response],
     }
 
+def policy_agent_node(state: AgentState) -> dict:
+    query = next(
+        (
+            str(message.content)
+            for message in reversed(state["messages"])
+            if message.type == "human"
+        ),
+        "",
+    )
+
+    result = answer_with_rag(
+        query,
+        top_k=3,
+        document_type="policy",
+        region="UK",
+    )
+
+    answer = result["answer"]
+    sources = result["sources"]
+
+    if sources:
+        source_lines = [
+            (
+                f"[Source {source['source_id']}] "
+                f"{source['title']} — "
+                f"chunk {source['chunk_index']}"
+            )
+            for source in sources
+        ]
+
+        answer += "\n\nSources:\n" + "\n".join(source_lines)
+
+    return {
+        "messages": [
+            AIMessage(content=answer),
+        ],
+    }
 
 def final_response_node(state: AgentState) -> dict:
     messages = [
@@ -398,9 +436,21 @@ def supervisor_node(
                 "DO NOT summarize transaction or account data.\n"
                 "DO NOT provide explanations or recommendations.\n\n"
                 "Available choices:\n"
-                "- transaction: send the request to the transaction worker\n"
-                "- account: send the request to the account worker\n"
+                "- transaction: investigate a specific transaction using banking tools\n"
+                "- account: look up specific account details using banking tools\n"
+                "- policy: answer questions about banking policies, procedures, "
+                "requirements, and FAQs using RAG\n"
                 "- finish: use when a worker has completed the investigation\n\n"
+                "Routing rules:\n"
+                "- Choose 'policy' for general questions about banking policies "
+                "or procedures.\n"
+                "- Choose 'transaction' or 'account' when the request requires "
+                "customer-specific transaction or account data.\n"
+                "- If a request requires both policy knowledge and customer-specific "
+                "data, perform the necessary work through the appropriate workers.\n"
+                "- If the latest worker response contains the requested information "
+                "and no more work is needed, choose 'finish'.\n"
+                "- If more work is required, choose the appropriate worker.\n\n"
                 "If the latest worker response contains the requested information "
                 "and does not request another tool, choose 'finish'.\n"
                 "If more work is required, choose the appropriate worker.\n\n"

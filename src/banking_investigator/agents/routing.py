@@ -23,5 +23,6 @@ class SupervisorDecision(BaseModel):
     next_agent: Literal[
         "transaction",
         "account",
+        "policy",
         "finish",
     ]

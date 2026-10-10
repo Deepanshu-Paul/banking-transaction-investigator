@@ -9,6 +9,7 @@ from banking_investigator.agents.nodes import (
     account_agent_node,
     account_tool_node,
     final_response_node,
+    policy_agent_node,
     supervisor_node,
     transaction_agent_node,
     transaction_tool_node,
@@ -30,6 +31,9 @@ def route_after_supervisor(state: AgentState) -> str:
 
     if next_agent == "account":
         return "account"
+
+    if next_agent == "policy":
+        return "policy"
 
     if next_agent == "finish":
         return "finish"
@@ -66,6 +70,11 @@ builder = StateGraph(AgentState)
 builder.add_node(
     "supervisor",
     supervisor_node,
+)
+
+builder.add_node(
+    "policy_agent",
+    policy_agent_node,
 )
 
 builder.add_node(
@@ -112,12 +121,18 @@ builder.add_conditional_edges(
     {
         "transaction": "transaction_agent",
         "account": "account_agent",
+        "policy": "policy_agent",
         "finish": "final_response",
     },
 )
 
 builder.add_edge(
     "final_response",
+    END,
+)
+
+builder.add_edge(
+    "policy_agent",
     END,
 )
 
