@@ -19,22 +19,6 @@ def answer_with_rag(
     if not query.strip():
         raise ValueError("Query must not be empty")
 
-    chunks = retrieve_relevant_chunks(
-        query,
-        top_k=top_k,
-        document_type=document_type,
-        region=region,
-    )
-
-    if not chunks:
-        return {
-            "answer": (
-                "I couldn't find relevant information "
-                "in the available policy documents."
-            ),
-            "sources": [],
-        }
-
     # 1. Retrieve chunks
 
     search_query = query
