@@ -1,10 +1,8 @@
 
-from sentence_transformers import CrossEncoder
-
 from banking_investigator.rag.retrieval import retrieve_relevant_chunks
+from banking_investigator.rag.reranking import rerank_chunks
 
 
-MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2"
 CANDIDATE_K = 8
 FINAL_K = 3
 
@@ -46,34 +44,7 @@ def reciprocal_rank(results, relevant_chunks):
     return 0.0
 
 
-def rerank_chunks(model, query, candidates):
-    pairs = [
-        (query, chunk["content"])
-        for chunk in candidates
-    ]
-
-    scores = model.predict(pairs)
-
-    scored_chunks = [
-        {
-            **chunk,
-            "rerank_score": float(score),
-        }
-        for chunk, score in zip(candidates, scores)
-    ]
-
-    return sorted(
-        scored_chunks,
-        key=lambda chunk: chunk["rerank_score"],
-        reverse=True,
-    )
-
-
 def main():
-    print(f"Loading reranker: {MODEL_NAME}")
-    model = CrossEncoder(MODEL_NAME)
-    print("Reranker loaded.")
-
     baseline_recalls = []
     reranked_recalls = []
     baseline_rrs = []
@@ -90,13 +61,15 @@ def main():
             region="UK",
         )
 
+        # Baseline: use the vector-search ranking directly.
         baseline = candidates[:FINAL_K]
 
+        # Reranked: reorder candidates using the Cross-Encoder.
         reranked = rerank_chunks(
-            model,
             query,
             candidates,
-        )[:FINAL_K]
+            top_k=FINAL_K,
+        )
 
         baseline_recall = recall_at_k(baseline, relevant)
         reranked_recall = recall_at_k(reranked, relevant)

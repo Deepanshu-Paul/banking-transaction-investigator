@@ -4,6 +4,10 @@ from langchain_core.messages import AIMessage
 from banking_investigator.rag import answer
 from banking_investigator.rag.grading import ChunkRelevanceGrade
 
+def fake_rerank(query, chunks, *, top_k=None):
+    if top_k is None:
+        return chunks
+    return chunks[:top_k]
 
 def test_answer_with_rag_uses_retrieved_context(
     monkeypatch,
@@ -33,6 +37,11 @@ def test_answer_with_rag_uses_retrieved_context(
         answer,
         "retrieve_relevant_chunks",
         lambda *args, **kwargs: retrieved_chunks,
+    )
+    monkeypatch.setattr(
+        answer,
+        "rerank_chunks",
+        fake_rerank,
     )
 
     # Mock the answer-generation LLM.
@@ -119,6 +128,12 @@ def test_answer_with_rag_skips_generation_when_all_chunks_irrelevant(
         ),
     )
 
+    monkeypatch.setattr(
+        answer,
+        "rerank_chunks",
+        fake_rerank,
+    )
+
     # Fail the test if answer generation is attempted.
     def unexpected_invoke(*args, **kwargs):
         raise AssertionError(
@@ -195,6 +210,12 @@ def test_answer_with_rag_recovers_after_query_rewriting(
         answer,
         "retrieve_relevant_chunks",
         fake_retrieve,
+    )
+
+    monkeypatch.setattr(
+    answer,
+    "rerank_chunks",
+    fake_rerank,
     )
 
     monkeypatch.setattr(
