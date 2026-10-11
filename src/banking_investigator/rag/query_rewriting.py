@@ -52,8 +52,8 @@ def rewrite_query(
     ]
 
     result = llm_client.invoke_structured(
-        QueryRewrite,
-        messages,
+        messages=messages,
+        output_schema=QueryRewrite,
     )
 
     rewritten_query = result.rewritten_query.strip()

@@ -49,6 +49,6 @@ def grade_chunk_relevance(
     ]
 
     return llm_client.invoke_structured(
-        ChunkRelevanceGrade,
-        messages,
+        messages=messages,
+        output_schema=ChunkRelevanceGrade,
     )

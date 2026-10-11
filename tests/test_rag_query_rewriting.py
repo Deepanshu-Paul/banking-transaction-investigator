@@ -17,8 +17,8 @@ def test_rewrite_query_returns_structured_rewritten_query(
 
     captured = {}
 
-    def fake_invoke_structured(schema, messages):
-        captured["schema"] = schema
+    def fake_invoke_structured(messages, output_schema):
+        captured["schema"] = output_schema
         captured["messages"] = messages
         return expected
 

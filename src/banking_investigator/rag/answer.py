@@ -74,8 +74,6 @@ def answer_with_rag(
 
     chunks = relevant_chunks
 
-    # 4. Your EXISTING context-building and source logic continues here
-
     context_parts = []
     sources = []
 
