@@ -1,10 +1,14 @@
+
 from typing import Any
-from banking_investigator.rag.query_rewriting import rewrite_query
+
 from langchain_core.messages import HumanMessage, SystemMessage
-from banking_investigator.rag.grading import grade_chunk_relevance
+
 from banking_investigator.llm.factory import get_llm_client
-from banking_investigator.rag.retrieval import retrieve_relevant_chunks
+from banking_investigator.rag.grading import grade_chunk_relevance
+from banking_investigator.rag.query_rewriting import rewrite_query
 from banking_investigator.rag.reranking import rerank_chunks
+from banking_investigator.rag.retrieval import retrieve_relevant_chunks
+
 
 llm_client = get_llm_client()
 
@@ -19,16 +23,13 @@ def answer_with_rag(
     if not query.strip():
         raise ValueError("Query must not be empty")
 
-    # 1. Retrieve chunks
-
-
     search_query = query
-    relevant_chunks = []
+    relevant_chunks: list[dict[str, Any]] = []
 
     # Retrieve a larger candidate pool before selecting top_k.
     candidate_k = max(top_k * 2, 8)
 
-    # Original query + at most one rewritten query.
+    # Two attempts: original query + one rewritten query.
     for attempt in range(2):
         candidates = retrieve_relevant_chunks(
             search_query,
@@ -37,7 +38,7 @@ def answer_with_rag(
             region=region,
         )
 
-        # Rank candidates against the user's original question.
+        # Rank candidates against the original user question.
         ranked_chunks = rerank_chunks(
             query,
             candidates,
@@ -63,15 +64,18 @@ def answer_with_rag(
                 else:
                     relevance_feedback.append(grade.reason)
 
+        # Continue to answer generation if evidence is relevant.
         if relevant_chunks:
             break
 
+        # Rewrite after the first unsuccessful attempt only.
         if attempt == 0:
             search_query = rewrite_query(
                 query,
                 relevance_feedback,
             )
 
+    # Refuse to answer if neither attempt finds relevant evidence.
     if not relevant_chunks:
         return {
             "answer": (
@@ -81,63 +85,11 @@ def answer_with_rag(
             "sources": [],
         }
 
-    chunks = relevant_chunks
-
-
-    # Two attempts: original query + one rewritten query.
-    for attempt in range(2):
-        chunks = retrieve_relevant_chunks(
-            search_query,
-            top_k=top_k,
-            document_type=document_type,
-            region=region,
-        )
-
-        relevance_feedback = []
-        relevant_chunks = []
-
-        if not chunks:
-            relevance_feedback.append(
-                "No policy chunks were retrieved for this query."
-            )
-        else:
-            for chunk in chunks:
-                grade = grade_chunk_relevance(
-                    search_query,
-                    chunk["content"],
-                )
-
-                if grade.verdict == "relevant":
-                    relevant_chunks.append(chunk)
-                else:
-                    relevance_feedback.append(grade.reason)
-
-        # Proceed when at least one chunk is relevant.
-        if relevant_chunks:
-            break
-
-        # Rewrite only after the first failed attempt.
-        if attempt == 0:
-            search_query = rewrite_query(
-                query,
-                relevance_feedback,
-            )
-
-    if not relevant_chunks:
-        return {
-            "answer": (
-                "I couldn't find sufficiently relevant policy "
-                "evidence to answer this question."
-            ),
-            "sources": [],
-        }
-
-    chunks = relevant_chunks
-
+    # Build context and source metadata from relevant chunks only.
     context_parts = []
     sources = []
 
-    for index, chunk in enumerate(chunks, start=1):
+    for index, chunk in enumerate(relevant_chunks, start=1):
         metadata = chunk["metadata"]
 
         context_parts.append(
@@ -161,6 +113,7 @@ def answer_with_rag(
 
     context = "\n\n".join(context_parts)
 
+    # Generate an answer grounded in the retrieved policy context.
     response = llm_client.invoke(
         [
             SystemMessage(
