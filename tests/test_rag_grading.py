@@ -12,8 +12,8 @@ def test_grade_chunk_relevance_returns_structured_result(monkeypatch):
 
     captured = {}
 
-    def fake_invoke_structured(schema, messages):
-        captured["schema"] = schema
+    def fake_invoke_structured(*, messages, output_schema):
+        captured["schema"] = output_schema
         captured["messages"] = messages
         return expected
 
