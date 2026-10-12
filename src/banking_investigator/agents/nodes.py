@@ -137,17 +137,29 @@ def _execute_scoped_tools(
     allowed_tools: set[str],
 ) -> dict:
     last_message = state["messages"][-1]
+    tool_calls = last_message.tool_calls
+
+    # Authorize the entire batch before executing any tool.
+    unauthorized_calls = [
+        call
+        for call in tool_calls
+        if call["name"] not in allowed_tools
+    ]
+
+    if unauthorized_calls:
+        unauthorized_names = ", ".join(
+            sorted({call["name"] for call in unauthorized_calls})
+        )
+        raise ValueError(
+            f"Tool call batch contains unauthorized tool(s): "
+            f"{unauthorized_names}"
+        )
 
     tool_messages = []
     investigation_data = []
 
-    for tool_call in last_message.tool_calls:
+    for tool_call in tool_calls:
         tool_name = tool_call["name"]
-
-        if tool_name not in allowed_tools:
-            raise ValueError(
-                f"Tool '{tool_name}' is not allowed for this worker."
-            )
 
         tool_result = execute_tool(
             tool_name,
