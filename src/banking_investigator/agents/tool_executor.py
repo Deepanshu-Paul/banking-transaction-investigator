@@ -1,6 +1,10 @@
 import random
 import time
+from pydantic import ValidationError
 
+from banking_investigator.agents.tool_validation import (
+    validate_tool_arguments,
+)
 from banking_investigator.agents.tool_registry import TOOL_REGISTRY
 from banking_investigator.models.tool_result import ToolResult
 from banking_investigator.services.errors import RetryableError
@@ -26,6 +30,17 @@ def execute_tool(
         return ToolResult(
             success=False,
             error=f"Unknown tool: {tool_name}",
+        )
+
+    try:
+        arguments = validate_tool_arguments(
+            tool_name,
+            arguments,
+        )
+    except (ValidationError, ValueError):
+        return ToolResult(
+            success=False,
+            error=f"Invalid arguments for tool '{tool_name}'.",
         )
 
     last_error: Exception | None = None
