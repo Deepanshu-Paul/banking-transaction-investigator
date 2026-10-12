@@ -10,6 +10,8 @@ from banking_investigator.agents.nodes import (
     account_tool_node,
     final_response_node,
     policy_agent_node,
+    security_abort_node,
+    should_continue_worker,
     supervisor_node,
     transaction_agent_node,
     transaction_tool_node,
@@ -44,21 +46,17 @@ def route_after_supervisor(state: AgentState) -> str:
 
 
 def should_continue_transaction(state: AgentState) -> str:
-    last_message = state["messages"][-1]
-
-    if last_message.tool_calls:
-        return "tools"
-
-    return "supervisor"
+    return should_continue_worker(
+        state,
+        {"get_transaction"},
+    )
 
 
 def should_continue_account(state: AgentState) -> str:
-    last_message = state["messages"][-1]
-
-    if last_message.tool_calls:
-        return "tools"
-
-    return "supervisor"
+    return should_continue_worker(
+        state,
+        {"get_account"},
+    )
 
 
 builder = StateGraph(AgentState)
@@ -100,6 +98,11 @@ builder.add_node(
 builder.add_node(
     "final_response",
     final_response_node,
+)
+
+builder.add_node(
+    "security_abort",
+    security_abort_node,
 )
 
 # -------------------------
@@ -146,6 +149,7 @@ builder.add_conditional_edges(
     {
         "tools": "transaction_tools",
         "supervisor": "supervisor",
+        "abort": "security_abort",
     },
 )
 
@@ -155,6 +159,7 @@ builder.add_conditional_edges(
     {
         "tools": "account_tools",
         "supervisor": "supervisor",
+        "abort": "security_abort",
     },
 )
 
@@ -170,6 +175,11 @@ builder.add_edge(
 builder.add_edge(
     "account_tools",
     "account_agent",
+)
+
+builder.add_edge(
+    "security_abort",
+    END,
 )
 
 # -------------------------

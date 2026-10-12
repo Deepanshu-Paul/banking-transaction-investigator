@@ -201,6 +201,72 @@ def _execute_scoped_tools(
         "investigation_data": investigation_data,
     }
 
+def should_continue_worker(
+    state: AgentState,
+    allowed_tools: set[str],
+) -> str:
+    last_message = state["messages"][-1]
+
+    if not last_message.tool_calls:
+        return "supervisor"
+
+    has_unauthorized_call = any(
+        call["name"] not in allowed_tools
+        for call in last_message.tool_calls
+    )
+
+    if not has_unauthorized_call:
+        return "tools"
+
+    # Look for a previous authorization rejection in this user turn.
+    for message in reversed(state["messages"][:-1]):
+        if message.type == "human":
+            break
+
+        if (
+            message.type == "tool"
+            and "Tool call batch rejected." in str(message.content)
+        ):
+            return "abort"
+
+    # First unauthorized attempt: let the tool node reject it safely.
+    return "tools"
+
+
+def security_abort_node(state: AgentState) -> dict:
+    last_message = state["messages"][-1]
+
+    rejection_result = {
+        "success": False,
+        "data": None,
+        "error": (
+            "Tool call batch rejected after a repeated "
+            "unauthorized request. No tools in this batch "
+            "were executed."
+        ),
+    }
+
+    tool_messages = [
+        ToolMessage(
+            content=serialize_for_llm(rejection_result),
+            tool_call_id=tool_call["id"],
+        )
+        for tool_call in last_message.tool_calls
+    ]
+
+    return {
+        "messages": [
+            *tool_messages,
+            AIMessage(
+                content=(
+                    "I stopped this investigation because the agent "
+                    "repeatedly requested tools outside its permissions. "
+                    "No tools in the rejected batch were executed. "
+                    "Please review the request before trying again."
+                )
+            ),
+        ]
+    }
 
 def transaction_tool_node(state: AgentState) -> dict:
     return _execute_scoped_tools(
