@@ -147,13 +147,27 @@ def _execute_scoped_tools(
     ]
 
     if unauthorized_calls:
-        unauthorized_names = ", ".join(
-            sorted({call["name"] for call in unauthorized_calls})
-        )
-        raise ValueError(
-            f"Tool call batch contains unauthorized tool(s): "
-            f"{unauthorized_names}"
-        )
+        rejection_result = {
+            "success": False,
+            "data": None,
+            "error": (
+                "Tool call batch rejected. This worker is not "
+                "authorized to execute every requested tool. "
+                "No tools in this batch were executed. "
+                "Continue using only authorized tools."
+            ),
+        }
+
+        return {
+            "messages": [
+                ToolMessage(
+                    content=serialize_for_llm(rejection_result),
+                    tool_call_id=tool_call["id"],
+                )
+                for tool_call in tool_calls
+            ],
+            "investigation_data": [],
+        }
 
     tool_messages = []
     investigation_data = []
