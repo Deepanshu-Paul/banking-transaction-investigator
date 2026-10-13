@@ -7,6 +7,13 @@ from banking_investigator.agents.routing import (
     RouteDecision,
     SupervisorDecision,
 )
+
+from time import perf_counter
+
+from banking_investigator.utils.observability import (
+    log_agent_event,
+)
+
 from banking_investigator.agents.state import AgentState
 from banking_investigator.agents.tool_executor import execute_tool
 from banking_investigator.llm.factory import get_llm_client
@@ -157,6 +164,15 @@ def _execute_scoped_tools(
                 "Continue using only authorized tools."
             ),
         }
+        log_agent_event(
+            "tool_batch_rejected",
+            allowed_tools=sorted(allowed_tools),
+            tool_names=sorted(
+                {call["name"] for call in unauthorized_calls}
+            ),
+            tool_count=len(tool_calls),
+            success=False,
+        )
 
         return {
             "messages": [
@@ -175,9 +191,43 @@ def _execute_scoped_tools(
     for tool_call in tool_calls:
         tool_name = tool_call["name"]
 
-        tool_result = execute_tool(
-            tool_name,
-            tool_call["args"],
+        started_at = perf_counter()
+
+        log_agent_event(
+            "tool_call_started",
+            tool_name=tool_name,
+            allowed_tools=sorted(allowed_tools),
+        )
+
+        try:
+            tool_result = execute_tool(
+                tool_name,
+                tool_call["args"],
+            )
+        except Exception as exc:
+            log_agent_event(
+                "tool_call_failed",
+                tool_name=tool_name,
+                duration_ms=round(
+                    (perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                success=False,
+                error_type=type(exc).__name__,
+            )
+            raise
+
+        log_agent_event(
+            "tool_call_completed",
+            tool_name=tool_name,
+            duration_ms=round(
+                (perf_counter() - started_at) * 1000,
+                2,
+            ),
+            success=tool_result.success,
+            error_type=(
+                None if tool_result.success else "ToolResultFailure"
+            ),
         )
 
         result_data = tool_result.model_dump()
@@ -553,9 +603,35 @@ def supervisor_node(
         *state["messages"],
     ]
 
-    decision = llm_client.invoke_structured(
-        messages=decision_messages,
-        output_schema=SupervisorDecision,
+    started_at = perf_counter()
+
+    try:
+        decision = llm_client.invoke_structured(
+            messages=decision_messages,
+            output_schema=SupervisorDecision,
+        )
+    except Exception as exc:
+        log_agent_event(
+            "supervisor_decision_failed",
+            duration_ms=round(
+                (perf_counter() - started_at) * 1000,
+                2,
+            ),
+            message_count=len(decision_messages),
+            success=False,
+            error_type=type(exc).__name__,
+        )
+        raise
+
+    log_agent_event(
+        "supervisor_decision_completed",
+        duration_ms=round(
+            (perf_counter() - started_at) * 1000,
+            2,
+        ),
+        message_count=len(decision_messages),
+        next_agent=decision.next_agent,
+        success=True,
     )
 
     return {
