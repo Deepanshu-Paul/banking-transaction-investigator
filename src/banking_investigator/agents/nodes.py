@@ -2,11 +2,18 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from banking_investigator.rag.answer import answer_with_rag
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
-
+from uuid import uuid4
 from banking_investigator.agents.routing import (
     RouteDecision,
     SupervisorDecision,
 )
+
+from time import perf_counter
+
+from banking_investigator.utils.observability import (
+    log_agent_event,
+)
+
 from banking_investigator.agents.state import AgentState
 from banking_investigator.agents.tool_executor import execute_tool
 from banking_investigator.llm.factory import get_llm_client
@@ -30,7 +37,35 @@ ACCOUNT_TOOLS = [
 ]
 
 llm_client = get_llm_client()
+def trace_start_node(state: AgentState) -> dict:
+    trace_id = uuid4().hex
 
+    log_agent_event(
+        "agent_trace_started",
+        trace_id=trace_id,
+        message_count=len(state.get("messages", [])),
+        success=True,
+        status="started",
+    )
+
+    return {
+        "trace_id": trace_id,
+        "run_status": "running",
+    }
+
+
+def trace_end_node(state: AgentState) -> dict:
+    status = state.get("run_status", "unknown")
+
+    log_agent_event(
+        "agent_trace_finished",
+        trace_id=state.get("trace_id"),
+        message_count=len(state.get("messages", [])),
+        success=status == "completed",
+        status=status,
+    )
+
+    return {}
 
 def retrieve_customer_memory(
     runtime: Runtime,
@@ -138,6 +173,7 @@ def _execute_scoped_tools(
 ) -> dict:
     last_message = state["messages"][-1]
     tool_calls = last_message.tool_calls
+    trace_id = state.get("trace_id")
 
     # Authorize the entire batch before executing any tool.
     unauthorized_calls = [
@@ -158,6 +194,17 @@ def _execute_scoped_tools(
             ),
         }
 
+        log_agent_event(
+            "tool_batch_rejected",
+            trace_id=trace_id,
+            allowed_tools=sorted(allowed_tools),
+            tool_names=sorted(
+                {call["name"] for call in unauthorized_calls}
+            ),
+            tool_count=len(tool_calls),
+            success=False,
+        )
+
         return {
             "messages": [
                 ToolMessage(
@@ -174,10 +221,48 @@ def _execute_scoped_tools(
 
     for tool_call in tool_calls:
         tool_name = tool_call["name"]
+        started_at = perf_counter()
 
-        tool_result = execute_tool(
-            tool_name,
-            tool_call["args"],
+        log_agent_event(
+            "tool_call_started",
+            trace_id=trace_id,
+            tool_name=tool_name,
+            allowed_tools=sorted(allowed_tools),
+        )
+
+        try:
+            tool_result = execute_tool(
+                tool_name,
+                tool_call["args"],
+            )
+        except Exception as exc:
+            log_agent_event(
+                "tool_call_failed",
+                trace_id=trace_id,
+                tool_name=tool_name,
+                duration_ms=round(
+                    (perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                success=False,
+                error_type=type(exc).__name__,
+            )
+            raise
+
+        log_agent_event(
+            "tool_call_completed",
+            trace_id=trace_id,
+            tool_name=tool_name,
+            duration_ms=round(
+                (perf_counter() - started_at) * 1000,
+                2,
+            ),
+            success=tool_result.success,
+            error_type=(
+                None
+                if tool_result.success
+                else "ToolResultFailure"
+            ),
         )
 
         result_data = tool_result.model_dump()
@@ -265,7 +350,8 @@ def security_abort_node(state: AgentState) -> dict:
                     "Please review the request before trying again."
                 )
             ),
-        ]
+        ],
+        "run_status": "blocked",
     }
 
 def transaction_tool_node(state: AgentState) -> dict:
@@ -461,6 +547,7 @@ def policy_agent_node(state: AgentState) -> dict:
         "messages": [
             AIMessage(content=answer),
         ],
+        "run_status": "completed",
     }
 
 def final_response_node(state: AgentState) -> dict:
@@ -487,6 +574,7 @@ def final_response_node(state: AgentState) -> dict:
 
     return {
         "messages": [response],
+        "run_status": "completed",
     }
 
 
@@ -553,9 +641,35 @@ def supervisor_node(
         *state["messages"],
     ]
 
-    decision = llm_client.invoke_structured(
-        messages=decision_messages,
-        output_schema=SupervisorDecision,
+    started_at = perf_counter()
+
+    try:
+        decision = llm_client.invoke_structured(
+            messages=decision_messages,
+            output_schema=SupervisorDecision,
+        )
+    except Exception as exc:
+        log_agent_event(
+            "supervisor_decision_failed",
+            duration_ms=round(
+                (perf_counter() - started_at) * 1000,
+                2,
+            ),
+            message_count=len(decision_messages),
+            success=False,
+            error_type=type(exc).__name__,
+        )
+        raise
+
+    log_agent_event(
+        "supervisor_decision_completed",
+        duration_ms=round(
+            (perf_counter() - started_at) * 1000,
+            2,
+        ),
+        message_count=len(decision_messages),
+        next_agent=decision.next_agent,
+        success=True,
     )
 
     return {

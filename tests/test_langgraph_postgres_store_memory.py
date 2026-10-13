@@ -1,10 +1,11 @@
+import json
+import logging
 from uuid import uuid4
-
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 from langgraph.store.postgres import PostgresStore
-
+from banking_investigator.utils.observability import LOGGER_NAME
 from banking_investigator.agents import nodes
 from banking_investigator.agents.graph import (
     checkpointer,
@@ -191,7 +192,12 @@ def test_account_lookup_writes_customer_memory(monkeypatch) -> None:
 
 def test_customer_memory_persists_across_graph_runs(
     monkeypatch,
+    caplog,
 ) -> None:
+    caplog.set_level(
+    logging.INFO,
+    logger=LOGGER_NAME,
+    )
     customer_id = (
         f"CUST{uuid4().hex[:8].upper()}"
     )
@@ -300,6 +306,45 @@ def test_customer_memory_persists_across_graph_runs(
     )
 
     try:
+                # Verify trace information on the real compiled graph run.
+        assert first_result["trace_id"]
+        assert first_result["run_status"] == "completed"
+
+        payloads = [
+            json.loads(record.getMessage())
+            for record in caplog.records
+            if record.name == LOGGER_NAME
+        ]
+
+        trace_id = first_result["trace_id"]
+
+        trace_events = [
+            payload
+            for payload in payloads
+            if payload.get("trace_id") == trace_id
+        ]
+
+        assert any(
+            payload["event"] == "agent_trace_started"
+            for payload in trace_events
+        )
+
+        assert any(
+            payload["event"] == "agent_trace_finished"
+            and payload["success"] is True
+            for payload in trace_events
+        )
+
+        assert any(
+            payload["event"] == "node_completed"
+            and payload.get("node_name") == "supervisor"
+            for payload in trace_events
+        )
+
+        assert any(
+            payload["event"] == "tool_call_completed"
+            for payload in trace_events
+        )
         assert first_result["next_agent"] == "finish"
 
         assert any(
@@ -459,6 +504,133 @@ def test_format_customer_memory_when_empty() -> None:
 
     assert result == "No relevant customer memory found."
 
+def test_blocked_graph_run_preserves_trace_id(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger=LOGGER_NAME,
+    )
+
+    def fake_invoke(
+        messages,
+        tools=None,
+    ):
+        # Deliberately request an account tool from the
+        # transaction worker, which is not authorized to use it.
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "get_account",
+                    "args": {
+                        "account_id": "ACC-TEST",
+                    },
+                    "id": f"unauthorized-call-{uuid4()}",
+                    "type": "tool_call",
+                }
+            ],
+        )
+
+    def fake_invoke_structured(
+        messages,
+        output_schema,
+    ):
+        return type(
+            "Decision",
+            (),
+            {"next_agent": "transaction"},
+        )()
+
+    def fail_if_tool_executes(
+        tool_name,
+        arguments,
+    ):
+        raise AssertionError(
+            f"Unauthorized tool executed: {tool_name}"
+        )
+
+    monkeypatch.setattr(
+        nodes.llm_client,
+        "invoke",
+        fake_invoke,
+    )
+
+    monkeypatch.setattr(
+        nodes.llm_client,
+        "invoke_structured",
+        fake_invoke_structured,
+    )
+
+    monkeypatch.setattr(
+        nodes,
+        "execute_tool",
+        fail_if_tool_executes,
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content="Retrieve account details"
+                )
+            ],
+            "route": None,
+            "approval_decision": None,
+            "next_agent": None,
+            "investigation_data": [],
+            "customer_id": None,
+        },
+        config={
+            "configurable": {
+                "thread_id": str(uuid4()),
+            }
+        },
+    )
+
+    assert result["trace_id"]
+    assert result["run_status"] == "blocked"
+
+    payloads = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == LOGGER_NAME
+    ]
+
+    trace_id = result["trace_id"]
+
+    trace_events = [
+        payload
+        for payload in payloads
+        if payload.get("trace_id") == trace_id
+    ]
+
+    assert any(
+        payload["event"] == "agent_trace_started"
+        for payload in trace_events
+    )
+
+    finished_events = [
+        payload
+        for payload in trace_events
+        if payload["event"] == "agent_trace_finished"
+    ]
+
+    assert len(finished_events) == 1
+    assert finished_events[0]["status"] == "blocked"
+    assert finished_events[0]["success"] is False
+
+    assert any(
+        payload["event"] == "tool_batch_rejected"
+        for payload in trace_events
+    )
+
+    assert any(
+        payload["event"] == "node_completed"
+        and payload.get("node_name") == "security_abort"
+        for payload in trace_events
+    )
 
 # def test_observe_memory_similarity_scores(
 #     semantic_store,
