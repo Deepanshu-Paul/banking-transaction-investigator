@@ -11,3 +11,7 @@ class AgentState(TypedDict):
     next_agent: str | None
     investigation_data: Annotated[list[dict], lambda x, y: x + y]
     customer_id: str | None
+
+    # Observability fields shared across graph nodes.
+    trace_id: str | None
+    run_status: str | None

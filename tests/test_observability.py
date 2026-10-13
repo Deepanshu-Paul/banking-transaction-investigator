@@ -99,3 +99,41 @@ def test_tool_execution_emits_start_and_completion_events(
 
     assert "TXN-SECRET" not in caplog.text
     assert result["investigation_data"][0]["result"]["success"]
+
+def test_agent_trace_start_and_end_share_trace_id(caplog):
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        start_result = nodes.trace_start_node(
+            {"messages": []}
+        )
+
+        final_state = {
+            "messages": [],
+            **start_result,
+            "run_status": "completed",
+        }
+
+        nodes.trace_end_node(final_state)
+
+    payloads = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == LOGGER_NAME
+    ]
+
+    started = next(
+        payload
+        for payload in payloads
+        if payload["event"] == "agent_trace_started"
+    )
+
+    finished = next(
+        payload
+        for payload in payloads
+        if payload["event"] == "agent_trace_finished"
+    )
+
+    assert started["trace_id"]
+    assert started["trace_id"] == finished["trace_id"]
+    assert started["status"] == "started"
+    assert finished["status"] == "completed"
+    assert finished["success"] is True

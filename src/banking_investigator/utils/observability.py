@@ -1,5 +1,7 @@
 import json
-from typing import Any
+from functools import wraps
+from time import perf_counter
+from typing import Any, Callable
 
 from banking_investigator.config.logging import get_logger
 
@@ -19,6 +21,9 @@ SAFE_FIELDS = {
     "next_agent",
     "message_count",
     "attempt",
+    "trace_id",
+    "node_name",
+    "status",
 }
 
 
@@ -50,3 +55,85 @@ def log_agent_event(
             default=str,
         ),
     )
+
+
+def observe_node(
+    node_name: str,
+    node_function: Callable[..., Any],
+) -> Callable[..., Any]:
+    """Log safe start, completion, and failure events for a graph node."""
+    if not node_name.strip():
+        raise ValueError("Node name must not be empty.")
+
+    @wraps(node_function)
+    def wrapped(
+        state: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        trace_id = (
+            state.get("trace_id")
+            if isinstance(state, dict)
+            else None
+        )
+
+        message_count = (
+            len(state.get("messages", []))
+            if isinstance(state, dict)
+            else 0
+        )
+
+        started_at = perf_counter()
+
+        log_agent_event(
+            "node_started",
+            trace_id=trace_id,
+            node_name=node_name,
+            message_count=message_count,
+        )
+
+        try:
+            result = node_function(
+                state,
+                *args,
+                **kwargs,
+            )
+        except Exception as exc:
+            log_agent_event(
+                "node_failed",
+                trace_id=trace_id,
+                node_name=node_name,
+                duration_ms=round(
+                    (perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                success=False,
+                error_type=type(exc).__name__,
+            )
+            raise
+
+        result_trace_id = trace_id
+        result_status = None
+
+        if isinstance(result, dict):
+            result_trace_id = result.get(
+                "trace_id",
+                trace_id,
+            )
+            result_status = result.get("run_status")
+
+        log_agent_event(
+            "node_completed",
+            trace_id=result_trace_id,
+            node_name=node_name,
+            duration_ms=round(
+                (perf_counter() - started_at) * 1000,
+                2,
+            ),
+            success=True,
+            status=result_status,
+        )
+
+        return result
+
+    return wrapped

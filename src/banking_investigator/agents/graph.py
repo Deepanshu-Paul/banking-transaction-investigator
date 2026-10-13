@@ -13,11 +13,15 @@ from banking_investigator.agents.nodes import (
     security_abort_node,
     should_continue_worker,
     supervisor_node,
+    trace_end_node,
+    trace_start_node,
     transaction_agent_node,
     transaction_tool_node,
 )
 from banking_investigator.agents.state import AgentState
 from banking_investigator.config.settings import settings
+from banking_investigator.utils.observability import observe_node
+
 
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-small",
@@ -62,60 +66,97 @@ def should_continue_account(state: AgentState) -> str:
 builder = StateGraph(AgentState)
 
 # -------------------------
-# Nodes
+# Trace lifecycle
+# -------------------------
+
+builder.add_node(
+    "trace_start",
+    observe_node("trace_start", trace_start_node),
+)
+
+builder.add_node(
+    "trace_end",
+    observe_node("trace_end", trace_end_node),
+)
+
+# -------------------------
+# Agent and tool nodes
 # -------------------------
 
 builder.add_node(
     "supervisor",
-    supervisor_node,
+    observe_node("supervisor", supervisor_node),
 )
 
 builder.add_node(
     "policy_agent",
-    policy_agent_node,
+    observe_node("policy_agent", policy_agent_node),
 )
 
 builder.add_node(
     "transaction_agent",
-    transaction_agent_node,
+    observe_node(
+        "transaction_agent",
+        transaction_agent_node,
+    ),
 )
 
 builder.add_node(
     "account_agent",
-    account_agent_node,
+    observe_node(
+        "account_agent",
+        account_agent_node,
+    ),
 )
 
 builder.add_node(
     "transaction_tools",
-    transaction_tool_node,
+    observe_node(
+        "transaction_tools",
+        transaction_tool_node,
+    ),
 )
 
 builder.add_node(
     "account_tools",
-    account_tool_node,
+    observe_node(
+        "account_tools",
+        account_tool_node,
+    ),
 )
 
 builder.add_node(
     "final_response",
-    final_response_node,
+    observe_node(
+        "final_response",
+        final_response_node,
+    ),
 )
 
 builder.add_node(
     "security_abort",
-    security_abort_node,
+    observe_node(
+        "security_abort",
+        security_abort_node,
+    ),
 )
 
 # -------------------------
-# START → SUPERVISOR
+# START -> TRACE START -> SUPERVISOR
 # -------------------------
 
 builder.add_edge(
     START,
+    "trace_start",
+)
+
+builder.add_edge(
+    "trace_start",
     "supervisor",
 )
 
 # -------------------------
-# SUPERVISOR → WORKER
+# SUPERVISOR -> WORKER
 # -------------------------
 
 builder.add_conditional_edges(
@@ -129,18 +170,8 @@ builder.add_conditional_edges(
     },
 )
 
-builder.add_edge(
-    "final_response",
-    END,
-)
-
-builder.add_edge(
-    "policy_agent",
-    END,
-)
-
 # -------------------------
-# WORKER → TOOL / SUPERVISOR
+# WORKER -> TOOL / SUPERVISOR
 # -------------------------
 
 builder.add_conditional_edges(
@@ -164,7 +195,7 @@ builder.add_conditional_edges(
 )
 
 # -------------------------
-# TOOL → WORKER
+# TOOL -> WORKER
 # -------------------------
 
 builder.add_edge(
@@ -177,8 +208,27 @@ builder.add_edge(
     "account_agent",
 )
 
+# -------------------------
+# All terminal paths -> TRACE END
+# -------------------------
+
+builder.add_edge(
+    "final_response",
+    "trace_end",
+)
+
+builder.add_edge(
+    "policy_agent",
+    "trace_end",
+)
+
 builder.add_edge(
     "security_abort",
+    "trace_end",
+)
+
+builder.add_edge(
+    "trace_end",
     END,
 )
 
