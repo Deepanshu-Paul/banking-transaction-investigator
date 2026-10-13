@@ -1,0 +1,166 @@
+{
+  "report_version": 1,
+  "generated_at_utc": "2026-10-13T13:47:34.404022+00:00",
+  "overall_status": "PASS",
+  "total_cases": 23,
+  "passed_cases": 23,
+  "failed_cases": 0,
+  "pass_rate": 1.0,
+  "duration_seconds": 59.41,
+  "evaluations": [
+    {
+      "evaluator": "routing",
+      "script": "scripts/evaluate_agent_routing.py",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 21.98,
+      "total_cases": 14,
+      "passed_cases": 14,
+      "failed_cases": 0,
+      "pass_rate": 1.0,
+      "cases": [
+        {
+          "case_id": "R1",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R2",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R3",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R4",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R5",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R6",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R7",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R8",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R9",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R10",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R11",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "R12",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "H1",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "H2",
+          "status": "PASS",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "evaluator": "tool_use",
+      "script": "scripts/evaluate_agent_tool_use.py",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 18.67,
+      "total_cases": 6,
+      "passed_cases": 6,
+      "failed_cases": 0,
+      "pass_rate": 1.0,
+      "cases": [
+        {
+          "case_id": "T1",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "T2",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "T3",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "A1",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "A2",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "A3",
+          "status": "PASS",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "evaluator": "answer_grounding",
+      "script": "scripts/evaluate_answer_grounding.py",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 18.77,
+      "total_cases": 3,
+      "passed_cases": 3,
+      "failed_cases": 0,
+      "pass_rate": 1.0,
+      "cases": [
+        {
+          "case_id": "G1",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "G2",
+          "status": "PASS",
+          "passed": true
+        },
+        {
+          "case_id": "G3",
+          "status": "PASS",
+          "passed": true
+        }
+      ]
+    }
+  ]
+}
